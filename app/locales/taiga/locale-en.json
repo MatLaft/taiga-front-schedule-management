@@ -1935,17 +1935,17 @@
         }
     },
     "DISCOVER": {
-        "PAGE_TITLE": "Discover projects - Taiga",
+        "PAGE_TITLE": "Discover prossjects - Taiga",
         "PAGE_DESCRIPTION": "Searchable directory of Public Projects in Taiga. Explore backlogs, timelines, issues, and teams. Check out the most liked or most active projects. Filter by Kanban or Scrum.",
-        "DISCOVER_TITLE": "Discover projects",
+        "DISCOVER_TITLE": "Discovesdfsdfr projects aaaaasdfsdf",
         "DISCOVER_SUBTITLE": "{projects, plural, =1{One public project to discover} other{# public projects to discover}}",
         "MOST_ACTIVE": "Most active",
         "MOST_ACTIVE_EMPTY": "There are no ACTIVE projects yet",
         "MOST_LIKED": "Most liked",
-        "MOST_LIKED_EMPTY": "There are no LIKED projects yet",
+        "MOST_LIKED_EMPTY": "There are no  projects yet",
         "VIEW_MORE": "View more",
-        "FEATURED": "Featured Projects",
-        "EMPTY": "There are no projects to show with this search criteria.<br> Try again!",
+        "FEATURED": "Featured Projecasdfts",
+        "EMPTY": "There are no projects to shasdfasdfow with this search criteria.<br> Try again!",
         "FILTERS": {
             "ALL": "All",
             "KANBAN": "Kanban",
@@ -1958,7 +1958,7 @@
             "CLEAR": "Clear filters"
         },
         "SEARCH": {
-            "PAGE_TITLE": "Search - Discover projects - Taiga",
+            "PAGE_TITLE": "Search - Discoverasdfasdf projects - Taiga",
             "PAGE_DESCRIPTION": "Searchable directory of Public Projects in Taiga. Explore backlogs, timelines, issues, and teams. Check out the most liked or most active projects. Filter by Kanban or Scrum.",
             "INPUT_PLACEHOLDER": "Type something...",
             "ACTION_TITLE": "Search",
