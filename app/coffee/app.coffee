@@ -303,6 +303,16 @@ configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEven
             section: "issues"
         }
     )
+
+    # Schedule
+    $routeProvider.when("/project/:pslug/schedule",
+        {
+            templateUrl: "schedule/schedule.html",
+            loader: true,
+            section: "schedule"
+        }
+    )
+
     $routeProvider.when("/project/:pslug/issue/:issueref",
         {
             templateUrl: "issue/issues-detail.html",

@@ -104,6 +104,7 @@ describe "ProjectMenu", ->
                     backlog: false,
                     kanban: false,
                     issues: false,
+                    schedule: false,
                     wiki: false
                 })
 
@@ -114,7 +115,7 @@ describe "ProjectMenu", ->
                     is_kanban_activated: true,
                     is_issues_activated: true,
                     is_wiki_activated: true,
-                    my_permissions: ["view_epics", "view_us", "view_issues", "view_wiki_pages"]
+                    my_permissions: ["view_epics", "view_us", "view_issues", "view_wiki_pages", "view_project"]
                 })
 
                 mocks.projectService.project = project
@@ -131,6 +132,7 @@ describe "ProjectMenu", ->
                     backlog: true,
                     kanban: true,
                     issues: true,
+                    schedule: true,
                     wiki: true
                 })
 
@@ -158,6 +160,7 @@ describe "ProjectMenu", ->
                     backlog: false,
                     kanban: false,
                     issues: false,
+                    schedule: false,
                     wiki: false
                 })
 

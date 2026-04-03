@@ -65,6 +65,7 @@ urls = {
     "project-kanban": "/project/:project/kanban"
     "project-issues": "/project/:project/issues"
     "project-epics": "/project/:project/epics"
+    "project-schedule": "/project/:project/schedule"
     "project-search": "/project/:project/search"
     "project-timeline": "/project/:project/timeline"
 

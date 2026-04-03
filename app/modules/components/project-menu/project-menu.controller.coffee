@@ -56,6 +56,7 @@ class ProjectMenuController
             backlog: false,
             kanban: false,
             issues: false,
+            schedule: false,
             wiki: false
         })
 
@@ -70,6 +71,9 @@ class ProjectMenuController
 
         if @.project.get("is_issues_activated") && @.project.get("my_permissions").indexOf("view_issues") != -1
             @.menu = @.menu.set("issues", true)
+
+        if @.project.get("my_permissions").indexOf("view_project") != -1
+            @.menu = @.menu.set("schedule", true)
 
         if @.project.get("is_wiki_activated") && @.project.get("my_permissions").indexOf("view_wiki_pages") != -1
             @.menu = @.menu.set("wiki", true)

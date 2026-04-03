@@ -921,6 +921,7 @@
             "BACKLOG": "Backlog",
             "KANBAN": "Kanban",
             "ISSUES": "Issues",
+            "SCHEDULE": "Schedule",
             "WIKI": "Wiki",
             "TEAM": "Team",
             "MEETUP": "Meetup",
