@@ -55,9 +55,9 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.loadingError = false
 
         promises = [
-            @repo.queryMany("epics", {project: @scope.projectId})
-            @repo.queryMany("userstories", {project: @scope.projectId})
-            @repo.queryMany("tasks", {project: @scope.projectId})
+            @repo.queryMany("epics", {project: @scope.projectId, include_schedule: true})
+            @repo.queryMany("userstories", {project: @scope.projectId, include_schedule: true})
+            @repo.queryMany("tasks", {project: @scope.projectId, include_schedule: true})
         ]
 
         @q.all(promises).then (result) =>
@@ -135,7 +135,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         row.item.setAttr(field, normalizedNew)
         @savingKey = "#{@rowKey(row)}-#{field}"
 
-        return @repo.save(row.item, true).then =>
+        return @repo.save(row.item, true, {include_schedule: true}).then =>
             @savingKey = null
             return
         , =>

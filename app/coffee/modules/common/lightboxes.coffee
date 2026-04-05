@@ -445,6 +445,14 @@ SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confi
         if ($scope.object.due_date)
             $scope.new_due_date = moment($scope.object.due_date).format(prettyDate)
 
+        parsePickerDate = (rawDate) ->
+            return null if !rawDate
+
+            parsed = moment(rawDate, prettyDate, true)
+            return null if !parsed.isValid()
+
+            return parsed.format("YYYY-MM-DD")
+
         persistWithoutAutoSave = (newDueDate, currentLoading = null) ->
             previousDueDate = $scope.object.due_date
             $scope.object.due_date = newDueDate
@@ -485,19 +493,13 @@ SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confi
                 .start()
 
             if $scope.notAutoSave
-                new_due_date = $('.due-date').val()
-                new_due_date = if (new_due_date) \
-                    then moment(new_due_date, prettyDate).format("YYYY-MM-DD") \
-                    else null
+                new_due_date = parsePickerDate($el.find(".due-date").val())
 
                 persistWithoutAutoSave(new_due_date, currentLoading)
                 return
 
             transform = $modelTransform.save (object) ->
-                new_due_date = $('.due-date').val()
-                object.due_date = if (new_due_date) \
-                    then moment(new_due_date, prettyDate).format("YYYY-MM-DD") \
-                    else null
+                object.due_date = parsePickerDate($el.find(".due-date").val())
                 return object
 
             transform.then ->
@@ -522,7 +524,7 @@ SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confi
 
             $confirm.askOnDelete(title, message, subtitle).then (askResponse) ->
                 askResponse.finish()
-                $('.due-date').val(null)
+                $el.find(".due-date").val(null)
                 $scope.object.due_date_reason = null
                 if $scope.notAutoSave
                     persistWithoutAutoSave(null)
@@ -1058,4 +1060,3 @@ tgResources, $tgResources, $epicsService, tgAnalytics) ->
 module.directive("tgLbRelatetoepic", [
     "$rootScope", "$tgConfirm", "lightboxService", "tgCurrentUserService", "tgResources",
     "$tgResources", "tgEpicsService", "$tgAnalytics", RelateToEpicLightboxDirective])
-
