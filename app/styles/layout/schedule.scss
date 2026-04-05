@@ -1,0 +1,114 @@
+.schedule {
+    .issues-table {
+        .issue-field {
+            flex-basis: 140px;
+            max-width: 140px;
+            text-align: right;
+        }
+
+        .modified-field,
+        .assigned-field {
+            flex-basis: 130px;
+            text-align: right;
+        }
+
+        .assigned-field {
+            @include until($widescreen) {
+                flex-basis: 130px;
+            }
+        }
+
+        .title {
+            .issue-field,
+            .modified-field,
+            .assigned-field {
+                justify-content: flex-end;
+            }
+        }
+
+        .table-main {
+            .level-field {
+                display: flex;
+                justify-content: center;
+            }
+        }
+    }
+
+    .schedule-type-tag {
+        @include font-size(xsmall);
+        border: 1px solid $color-gray300;
+        border-radius: 999px;
+        color: $color-link-primary;
+        display: inline-block;
+        font-weight: 500;
+        line-height: 1;
+        padding: .35rem .55rem;
+        text-transform: uppercase;
+        white-space: nowrap;
+
+        &.is-epic {
+            border-color: $color-link-tertiary;
+            color: $color-link-tertiary;
+        }
+
+        &.is-userstory {
+            border-color: $color-link-primary;
+            color: $color-link-primary;
+        }
+
+        &.is-task {
+            border-color: $color-link-red;
+            color: $color-link-red;
+        }
+    }
+
+    .schedule-item-content {
+        align-items: center;
+        column-gap: .25rem;
+        display: flex;
+        flex-wrap: wrap;
+        row-gap: .25rem;
+    }
+
+    .schedule-date-cell {
+        text-align: right;
+    }
+
+    .schedule-date-value {
+        background: none;
+        border: 0;
+        color: $color-link-primary;
+        cursor: pointer;
+        margin: 0;
+        padding: 0;
+        text-decoration: underline;
+
+        &:disabled {
+            color: $color-gray400;
+            cursor: wait;
+        }
+    }
+
+    .schedule-date-editor {
+        align-items: flex-end;
+        display: flex;
+        flex-direction: column;
+        gap: .35rem;
+
+        input {
+            max-width: 9rem;
+            min-height: 2rem;
+            width: 100%;
+        }
+    }
+
+    .schedule-date-actions {
+        display: flex;
+        gap: .25rem;
+
+        button {
+            min-height: 1.75rem;
+            padding: .15rem .4rem;
+        }
+    }
+}

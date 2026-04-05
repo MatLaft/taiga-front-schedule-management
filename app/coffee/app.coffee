@@ -1077,6 +1077,7 @@ modules = [
     "taigaUserStories",
     "taigaTasks",
     "taigaTeam",
+    "taigaSchedule",
     "taigaWiki",
     "taigaSearch",
     "taigaAdmin",

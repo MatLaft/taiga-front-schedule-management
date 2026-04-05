@@ -445,6 +445,33 @@ SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confi
         if ($scope.object.due_date)
             $scope.new_due_date = moment($scope.object.due_date).format(prettyDate)
 
+        persistWithoutAutoSave = (newDueDate, currentLoading = null) ->
+            previousDueDate = $scope.object.due_date
+            $scope.object.due_date = newDueDate
+
+            closeLightbox = ->
+                currentLoading?.finish()
+                lightboxService.close($el)
+
+            if !_.isFunction($scope.onSave)
+                $scope.$apply()
+                closeLightbox()
+                return
+
+            savePromise = $scope.onSave(newDueDate, previousDueDate)
+
+            if savePromise?.then
+                savePromise.then ->
+                    $confirm.notify("success")
+                , ->
+                    $scope.object.due_date = previousDueDate
+                    $confirm.notify("error")
+
+                savePromise.finally ->
+                    closeLightbox()
+            else
+                closeLightbox()
+
         $el.on "click", ".suggestion", (event) ->
             target = angular.element(event.currentTarget)
             quantity = target.data('quantity')
@@ -459,13 +486,11 @@ SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confi
 
             if $scope.notAutoSave
                 new_due_date = $('.due-date').val()
-                $scope.object.due_date = if (new_due_date) \
+                new_due_date = if (new_due_date) \
                     then moment(new_due_date, prettyDate).format("YYYY-MM-DD") \
                     else null
 
-                $scope.$apply()
-                currentLoading.finish()
-                lightboxService.close($el)
+                persistWithoutAutoSave(new_due_date, currentLoading)
                 return
 
             transform = $modelTransform.save (object) ->
@@ -500,8 +525,7 @@ SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confi
                 $('.due-date').val(null)
                 $scope.object.due_date_reason = null
                 if $scope.notAutoSave
-                    $scope.object.due_date = null
-                    lightboxService.close($el)
+                    persistWithoutAutoSave(null)
                 else
                     save()
 
@@ -1034,5 +1058,4 @@ tgResources, $tgResources, $epicsService, tgAnalytics) ->
 module.directive("tgLbRelatetoepic", [
     "$rootScope", "$tgConfirm", "lightboxService", "tgCurrentUserService", "tgResources",
     "$tgResources", "tgEpicsService", "$tgAnalytics", RelateToEpicLightboxDirective])
-
 
