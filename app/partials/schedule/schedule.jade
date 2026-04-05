@@ -22,11 +22,11 @@ div.wrapper.issues.schedule(
 
         section.issues-table.basic-table(ng-if="!ctrl.loading && !ctrl.loadingError && ctrl.rows.length")
             div.row.title
-                div.level-field
-                    span.wide Type
+                div.level-field.skip-order(data-fieldname="type")
+                    span.wide {{"ISSUES.TABLE.COLUMNS.TYPE" | translate}}
                     div.mobile
-                        .tooltip.pop-help Type
-                        span.first-letter Type
+                        .tooltip.pop-help {{"ISSUES.TABLE.COLUMNS.TYPE" | translate}}
+                        span.first-letter {{"ISSUES.TABLE.COLUMNS.TYPE" | translate}}
                     svg(viewBox="0 0 16 16")
                         path(
                             class="arrow-up"
@@ -35,8 +35,8 @@ div.wrapper.issues.schedule(
                             class="arrow-down"
                             d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
 
-                div.subject
-                    span Item
+                div.subject.skip-order(data-fieldname="subject")
+                    span {{"ISSUES.TABLE.COLUMNS.ISSUE" | translate}}
                     svg(viewBox="0 0 16 16")
                         path(
                             class="arrow-up"
@@ -45,7 +45,7 @@ div.wrapper.issues.schedule(
                             class="arrow-down"
                             d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
 
-                div.issue-field
+                div.issue-field.skip-order(data-fieldname="estimated_start")
                     span estimated_start
                     svg(viewBox="0 0 16 16")
                         path(
@@ -55,7 +55,7 @@ div.wrapper.issues.schedule(
                             class="arrow-down"
                             d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
 
-                div.modified-field
+                div.modified-field.skip-order(data-fieldname="actual_start")
                     span actual_start
                     svg(viewBox="0 0 16 16")
                         path(
@@ -65,7 +65,7 @@ div.wrapper.issues.schedule(
                             class="arrow-down"
                             d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
 
-                div.assigned-field
+                div.assigned-field.skip-order(data-fieldname="due_date")
                     span due_date
                     svg(viewBox="0 0 16 16")
                         path(

@@ -440,6 +440,16 @@ module.directive("tgLightboxLeaveProjectWarning", ["lightboxService", LightboxLe
 SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confirm, $modelTransform) ->
     link = ($scope, $el, attrs) ->
         prettyDate = $translate.instant("COMMON.PICKERDATE.FORMAT")
+        fieldName = $scope.fieldName or "due_date"
+        fieldLabel = ($scope.fieldLabel or fieldName).replace(/_/g, " ")
+        isDueDateField = fieldName == "due_date"
+
+        $scope.lightboxTitle = if $scope.lightboxTitle? then $scope.lightboxTitle else if isDueDateField then $translate.instant("LIGHTBOX.SET_DUE_DATE.TITLE") else "Set #{fieldLabel}"
+        $scope.datePlaceholder = if $scope.datePlaceholder? then $scope.datePlaceholder else $translate.instant("LIGHTBOX.SET_DUE_DATE.PLACEHOLDER_DUE_DATE")
+        $scope.showSuggestions = if angular.isDefined($scope.showSuggestions) then $scope.showSuggestions else isDueDateField
+        $scope.showDueDateReason = if angular.isDefined($scope.showDueDateReason) then $scope.showDueDateReason else isDueDateField
+        $scope.deleteDateTitle = if isDueDateField then $translate.instant("LIGHTBOX.SET_DUE_DATE.TITLE_ACTION_DELETE_DUE_DATE") else $translate.instant("COMMON.DELETE")
+
         lightboxService.open($el)
 
         if ($scope.object.due_date)
@@ -518,6 +528,16 @@ SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confi
             save()
 
         remove = ->
+            if !isDueDateField
+                $el.find(".due-date").val(null)
+                $scope.object.due_date_reason = null
+
+                if $scope.notAutoSave
+                    persistWithoutAutoSave(null)
+                else
+                    save()
+                return
+
             title = $translate.instant("LIGHTBOX.DELETE_DUE_DATE.TITLE")
             subtitle = $translate.instant("LIGHTBOX.DELETE_DUE_DATE.SUBTITLE")
             message = moment($scope.object.due_date).format(prettyDate)

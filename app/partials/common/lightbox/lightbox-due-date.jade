@@ -8,7 +8,7 @@
 tg-lightbox-close
 
 form
-    h2.title(translate="LIGHTBOX.SET_DUE_DATE.TITLE")
+    h2.title {{ lightboxTitle }}
 
     fieldset.date
         input.due-date.no-focus(
@@ -17,10 +17,10 @@ form
             picker-value="{{ new_due_date }}"
             data-required="true"
             tg-date-selector
-            placeholder="{{'LIGHTBOX.SET_DUE_DATE.PLACEHOLDER_DUE_DATE' | translate}}"
+            placeholder="{{ datePlaceholder }}"
         )
 
-        ul.due-date-suggestions
+        ul.due-date-suggestions(ng-if="showSuggestions")
             li.suggestion.clickable(data-quantity=1, data-unit="weeks")
                 span {{ 'LIGHTBOX.SET_DUE_DATE.SUGGESTIONS.IN_ONE_WEEK' | translate }}
             li.suggestion.clickable(data-quantity=2, data-unit="weeks")
@@ -30,7 +30,7 @@ form
             li.suggestion.clickable(data-quantity=3, data-unit="months")
                 span {{ 'LIGHTBOX.SET_DUE_DATE.SUGGESTIONS.IN_THREE_MONTHS' | translate }}
 
-    fieldset.reason
+    fieldset.reason(ng-if="showDueDateReason")
         span {{ 'LIGHTBOX.SET_DUE_DATE.REASON_FOR_DUE_DATE' | translate }}
         textarea.due-date-reason.no-focus(
             name="due_date_reason"
@@ -46,7 +46,7 @@ form
 
     a.delete-due-date(
         href=""
-        title="{{'LIGHTBOX.SET_DUE_DATE.TITLE_ACTION_DELETE_DUE_DATE' | translate}}"
+        title="{{ deleteDateTitle }}"
         v-if="new_due_date"
     )
         tg-svg(svg-icon="icon-trash")

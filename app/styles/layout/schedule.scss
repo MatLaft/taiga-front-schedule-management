@@ -17,21 +17,6 @@
                 flex-basis: 130px;
             }
         }
-
-        .title {
-            .issue-field,
-            .modified-field,
-            .assigned-field {
-                justify-content: flex-end;
-            }
-        }
-
-        .table-main {
-            .level-field {
-                display: flex;
-                justify-content: center;
-            }
-        }
     }
 
     .schedule-type-tag {
