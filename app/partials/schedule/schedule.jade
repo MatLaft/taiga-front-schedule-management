@@ -27,7 +27,7 @@ div.wrapper.issues.schedule(
                     div.mobile
                         .tooltip.pop-help {{"ISSUES.TABLE.COLUMNS.TYPE" | translate}}
                         span.first-letter {{"ISSUES.TABLE.COLUMNS.TYPE" | translate}}
-                    svg(viewBox="0 0 16 16")
+                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('type')")
                         path(
                             class="arrow-up"
                             d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
@@ -37,7 +37,7 @@ div.wrapper.issues.schedule(
 
                 div.subject(data-fieldname="subject" ng-click="ctrl.toggleSubjectOrder()")
                     span {{"ISSUES.TABLE.COLUMNS.ISSUE" | translate}}
-                    svg(viewBox="0 0 16 16")
+                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('subject')")
                         path(
                             class="arrow-up"
                             d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
@@ -47,7 +47,7 @@ div.wrapper.issues.schedule(
 
                 div.issue-field(data-fieldname="estimated_start" ng-click="ctrl.toggleDateOrder('estimated_start')")
                     span estimated_start
-                    svg(viewBox="0 0 16 16")
+                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('estimated_start')")
                         path(
                             class="arrow-up"
                             d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
@@ -57,7 +57,7 @@ div.wrapper.issues.schedule(
 
                 div.modified-field(data-fieldname="actual_start" ng-click="ctrl.toggleDateOrder('actual_start')")
                     span actual_start
-                    svg(viewBox="0 0 16 16")
+                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('actual_start')")
                         path(
                             class="arrow-up"
                             d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
@@ -67,7 +67,7 @@ div.wrapper.issues.schedule(
 
                 div.assigned-field(data-fieldname="due_date" ng-click="ctrl.toggleDateOrder('due_date')")
                     span due_date
-                    svg(viewBox="0 0 16 16")
+                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('due_date')")
                         path(
                             class="arrow-up"
                             d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")

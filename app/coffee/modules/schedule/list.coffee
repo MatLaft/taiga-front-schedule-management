@@ -39,8 +39,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.dateSortDirections = {}
         @._typeOrderCycles = [
             ["epic", "userstory", "task"]
-            ["userstory", "task", "epic"]
-            ["task", "epic", "userstory"]
+            ["task", "userstory", "epic"]
         ]
         @._dateSortFields = ["estimated_start", "actual_start", "due_date"]
 
@@ -131,6 +130,20 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         @.updateDisplayRows()
 
+    getSortIconClass: (field) ->
+        return "" if @sortField != field
+
+        if field == "type"
+            return if @typeOrderMode == 0 then "icon-arrow-down" else "icon-arrow-up"
+
+        if field == "subject"
+            return @_directionToIconClass(@subjectSortDirection)
+
+        if @_dateSortFields.indexOf(field) != -1
+            return @_directionToIconClass(@dateSortDirections[field])
+
+        return ""
+
     updateDisplayRows: ->
         if @sortField == "type" and @typeOrderMode != null
             @displayRows = @._orderRowsByType()
@@ -217,6 +230,10 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         return null if !parsed.isValid()
 
         return parsed.valueOf()
+
+    _directionToIconClass: (direction) ->
+        return "" if !direction
+        return if direction == "asc" then "icon-arrow-down" else "icon-arrow-up"
 
     rowKey: (row) ->
         return "#{row.type}-#{row.item.id}"

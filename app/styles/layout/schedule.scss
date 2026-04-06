@@ -1,5 +1,11 @@
 .schedule {
     .issues-table {
+        .title {
+            [data-fieldname] {
+                outline: none;
+            }
+        }
+
         .issue-field {
             flex-basis: 140px;
             max-width: 140px;
