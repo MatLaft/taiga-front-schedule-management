@@ -17,6 +17,7 @@ class FilterController
 
     constructor: (@translate) ->
         @.opened = null
+        @.prettyDateFormat = @translate.instant("COMMON.PICKERDATE.FORMAT")
         @.filterModeOptions = ["include", "exclude"]
         @.filterModeLabels = {
             "include": @translate.instant("COMMON.FILTERS.ADVANCED_FILTERS.INCLUDE"),
@@ -30,9 +31,12 @@ class FilterController
             if changes.selectedFilters
                 @.getIncludedFilters()
                 @.getExcludedFilters()
+            if changes.filters
+                @.syncDateRangeInputs()
 
         @.includedFilters = @.getIncludedFilters()
         @.excludedFilters = @.getExcludedFilters()
+        @.syncDateRangeInputs()
 
 
     toggleFilterCategory: (filterName) ->
@@ -89,6 +93,41 @@ class FilterController
         @.activeCustomFilter = filter.id
         @.onSelectCustomFilter({filter: filter})
 
+    applyDateRange: (filterCategory) ->
+        return if !@.onSetDateRange
+
+        from = @.normalizeDateRangeInput(filterCategory?.fromInput)
+        to = @.normalizeDateRangeInput(filterCategory?.toInput)
+
+        if from? and to? and from > to
+            [from, to] = [to, from]
+
+        filterCategory.fromInput = @.toPickerInputValue(from)
+        filterCategory.toInput = @.toPickerInputValue(to)
+        filterCategory.preset = null
+
+        @.activeCustomFilter = null
+        @.onSetDateRange({range: {from: from, to: to, preset: null, mode: @.filterMode}})
+
+    clearDateRange: (filterCategory) ->
+        filterCategory.fromInput = ""
+        filterCategory.toInput = ""
+
+        @.activeCustomFilter = null
+
+        if @.onClearDateRange
+            @.onClearDateRange()
+        else if @.onSetDateRange
+            @.onSetDateRange({range: {from: null, to: null}})
+
+    applyDateRangePreset: (filterCategory, preset) ->
+        return if !@.onSetDateRange
+        return if !preset?
+
+        filterCategory.preset = preset
+        @.activeCustomFilter = null
+        @.onSetDateRange({range: {preset: preset, mode: @.filterMode}})
+
     getIncludedFilters: () ->
         @.includedFilters = _.filter @.selectedFilters, (it) ->
             return it.mode == 'include'
@@ -100,5 +139,58 @@ class FilterController
     isFilterSelected: (filterCategory, filter) ->
         return !!_.find @.selectedFilters, (it) ->
             return filter.id == it.id && filterCategory.dataType == it.dataType
+
+    syncDateRangeInputs: () ->
+        _.each @.filters or [], (filterCategory) =>
+            return if filterCategory?.dataType != "due_date_range"
+
+            if filterCategory?.preset?
+                filterCategory.fromInput = ""
+                filterCategory.toInput = ""
+                return
+
+            filterCategory.fromInput = @.toPickerInputValue(filterCategory.from)
+            filterCategory.toInput = @.toPickerInputValue(filterCategory.to)
+
+    normalizeDateRangeInput: (dateValue) ->
+        return null if !dateValue?
+
+        parsed = null
+        if _.isDate(dateValue)
+            parsed = moment([dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate()])
+        else
+            value = "#{dateValue or ''}".trim()
+            return null if !value.length
+
+            parsed = moment(value, @prettyDateFormat, true)
+            if !parsed.isValid()
+                parsed = moment(value, "YYYY-MM-DD", true)
+            if !parsed.isValid()
+                parsed = moment.parseZone(value, moment.ISO_8601, true)
+            if !parsed.isValid()
+                parsed = moment(value)
+
+        return null if !parsed?.isValid()
+
+        return parsed.format("YYYY-MM-DD")
+
+    toPickerInputValue: (dateValue) ->
+        normalized = @.normalizeDateRangeInput(dateValue)
+        return "" if !normalized?
+
+        parsed = moment(normalized, "YYYY-MM-DD", true)
+        return normalized if !parsed.isValid()
+
+        return parsed.format(@prettyDateFormat)
+
+    hasAnySelectedFilter: () ->
+        return true if (@selectedFilters or []).length > 0
+
+        return _.some(@filters or [], (filterCategory) =>
+            return false if filterCategory?.dataType != "due_date_range"
+            fromValue = @.normalizeDateRangeInput(filterCategory.fromInput or filterCategory.from)
+            toValue = @.normalizeDateRangeInput(filterCategory.toInput or filterCategory.to)
+            return !!(fromValue or toValue)
+        )
 
 angular.module('taigaComponents').controller('Filter', FilterController)

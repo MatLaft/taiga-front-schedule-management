@@ -14,7 +14,7 @@
             ng-if="!vm.customFilterForm"
             ng-click="vm.openCustomFilter()"
             translate="COMMON.FILTERS.ACTION_ADD"
-            ng-disabled="!vm.selectedFilters.length"
+            ng-disabled="!vm.hasAnySelectedFilter()"
         )
         //- .add-custom-filter.inactive(
         //-     ng-if="!vm.selectedFilters.length"
@@ -22,7 +22,7 @@
         //- )
 
     form.custom-filters-add-form(
-        ng-if="vm.customFilterForm && vm.selectedFilters.length"
+        ng-if="vm.customFilterForm && vm.hasAnySelectedFilter()"
         ng-submit="vm.saveCustomFilter()"
     )
         input.add-filter-input.e2e-filter-name-input(
@@ -65,6 +65,7 @@
                 .single-applied-filter.ng-animate-disabled(
                     ng-repeat="it in vm.includedFilters | orderBy:'-mode' track by it.key"
                     class="{{it.mode}}"
+                    ng-class="{'is-multiline': it.dataType === 'due_date_range'}"
                 )
                     .name(
                         ng-if="it.dataType === 'tags'"
@@ -85,6 +86,7 @@
                 .single-applied-filter.ng-animate-disabled(
                     ng-repeat="it in vm.excludedFilters | orderBy:'-mode' track by it.key"
                     class="{{it.mode}}"
+                    ng-class="{'is-multiline': it.dataType === 'due_date_range'}"
                 )
                     .name(
                         ng-if="it.dataType === 'tags'"
@@ -146,10 +148,76 @@
                     ng-if="vm.isOpen(filter.dataType)",
                     tg-filter-slide-down
                 )
+                    .filter-date-range(
+                        ng-if="filter.dataType === 'due_date_range'"
+                    )
+                        button.single-filter.single-filter-type-general(
+                            type="button"
+                            ng-click="vm.applyDateRangePreset(filter, 'in_one_week')"
+                        )
+                            span.name {{ 'LIGHTBOX.SET_DUE_DATE.SUGGESTIONS.IN_ONE_WEEK' | translate }}
+
+                        button.single-filter.single-filter-type-general(
+                            type="button"
+                            ng-click="vm.applyDateRangePreset(filter, 'in_two_weeks')"
+                        )
+                            span.name {{ 'LIGHTBOX.SET_DUE_DATE.SUGGESTIONS.IN_TWO_WEEKS' | translate }}
+
+                        button.single-filter.single-filter-type-general(
+                            type="button"
+                            ng-click="vm.applyDateRangePreset(filter, 'in_one_month')"
+                        )
+                            span.name {{ 'LIGHTBOX.SET_DUE_DATE.SUGGESTIONS.IN_ONE_MONTH' | translate }}
+
+                        button.single-filter.single-filter-type-general(
+                            type="button"
+                            ng-click="vm.applyDateRangePreset(filter, 'in_three_months')"
+                        )
+                            span.name {{ 'LIGHTBOX.SET_DUE_DATE.SUGGESTIONS.IN_THREE_MONTHS' | translate }}
+
+                        label.filter-date-range-label(
+                            for="filter-{{filter.dataType}}-from"
+                            translate="SCHEDULE.FILTERS.DUE_DATE_FROM"
+                        )
+                        input.filter-date-range-input.due-date.no-focus(
+                            id="filter-{{filter.dataType}}-from"
+                            type="text"
+                            ng-model="filter.fromInput"
+                            picker-value="{{ filter.fromInput }}"
+                            tg-date-selector
+                            placeholder="{{'LIGHTBOX.SET_DUE_DATE.PLACEHOLDER_DUE_DATE' | translate}}"
+                        )
+
+                        label.filter-date-range-label(
+                            for="filter-{{filter.dataType}}-to"
+                            translate="SCHEDULE.FILTERS.DUE_DATE_TO"
+                        )
+                        input.filter-date-range-input.due-date.no-focus(
+                            id="filter-{{filter.dataType}}-to"
+                            type="text"
+                            ng-model="filter.toInput"
+                            picker-value="{{ filter.toInput }}"
+                            tg-date-selector
+                            placeholder="{{'LIGHTBOX.SET_DUE_DATE.PLACEHOLDER_DUE_DATE' | translate}}"
+                        )
+
+                        .filter-date-range-actions
+                            button.btn-small(
+                                type="button"
+                                ng-click="vm.applyDateRange(filter)"
+                                translate="SCHEDULE.FILTERS.APPLY"
+                            )
+                            button.btn-small.btn-gray(
+                                type="button"
+                                ng-click="vm.clearDateRange(filter)"
+                                translate="SCHEDULE.FILTERS.CLEAR"
+                            )
+
                     button.single-filter(
+                        ng-if="filter.dataType !== 'due_date_range'"
                         ng-repeat="it in filter.content"
                         ng-class="{'single-filter-type-general': filter.dataType !== 'tags', 'single-filter-type-tag': filter.dataType === 'tags', 'single-filter-type-user': filter.dataType === 'assigned_users' || filter.dataType === 'owner'}"
-                        ng-if="!vm.isFilterSelected(filter, it) && !(it.count == 0 && filter.hideEmpty)"
+                        ng-show="!vm.isFilterSelected(filter, it) && !(it.count == 0 && filter.hideEmpty)"
                         ng-click="vm.selectFilter(filter, it)"
                         ng-style="{'border-color': (it.color && filter.dataType !== 'tags') ? it.color : 'transparent','background':  (it.color && filter.dataType === 'tags') ? it.color: null}"
                     )

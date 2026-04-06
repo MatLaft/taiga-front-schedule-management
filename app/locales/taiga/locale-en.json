@@ -1650,6 +1650,15 @@
         }
     },
     "SCHEDULE": {
+        "FILTERS": {
+            "DUE_DATE_RANGE": "Due date range",
+            "DUE_DATE_FROM": "From",
+            "DUE_DATE_TO": "To",
+            "DUE_DATE_FROM_PLACEHOLDER": "Start date",
+            "DUE_DATE_TO_PLACEHOLDER": "End date",
+            "APPLY": "Apply",
+            "CLEAR": "Clear"
+        },
         "TABLE": {
             "COLUMNS": {
                 "TYPE": "Type",

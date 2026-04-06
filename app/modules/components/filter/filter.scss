@@ -83,6 +83,30 @@ tg-filter {
     padding: .5rem 0;
 }
 
+.filter-date-range {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    padding: .5rem;
+
+    .filter-date-range-label {
+        @include font-size(small);
+        @include font-type(medium);
+        color: $color-link-tertiary;
+    }
+
+    .filter-date-range-input {
+        width: 100%;
+    }
+
+    .filter-date-range-actions {
+        display: flex;
+        gap: .35rem;
+        justify-content: flex-end;
+        margin-top: .2rem;
+    }
+}
+
 .single-filter {
     @include font-size(small);
     align-items: center;
@@ -242,6 +266,21 @@ tg-filter {
                 svg {
                     fill: $color-link-red;
                 }
+            }
+        }
+
+        &.is-multiline {
+            align-items: flex-start;
+            display: flex;
+            width: 100%;
+
+            .name {
+                margin-right: .5rem;
+                max-width: none;
+                overflow: visible;
+                text-overflow: clip;
+                white-space: normal;
+                word-break: break-word;
             }
         }
     }
