@@ -51,7 +51,7 @@ div.wrapper.issues.schedule(
         p(ng-if="ctrl.loading") Loading schedule...
         p(ng-if="ctrl.loadingError") Unable to load schedule data.
 
-        section.issues-table.basic-table(ng-if="!ctrl.loading && !ctrl.loadingError && ctrl.rows.length")
+        section.issues-table.basic-table(ng-if="!ctrl.loading && !ctrl.loadingError && ctrl.displayRows.length")
             div.row.title
                 div.level-field(data-fieldname="type" ng-click="ctrl.cycleTypeOrder()")
                     span.wide {{"SCHEDULE.TABLE.COLUMNS.TYPE" | translate}}
@@ -173,7 +173,7 @@ div.wrapper.issues.schedule(
                         ng-disabled="ctrl.isSaving(row, 'due_date')"
                     ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'due_date')) }}
 
-        section.empty-large(ng-if="!ctrl.loading && !ctrl.loadingError && !ctrl.rows.length")
+        section.empty-large(ng-if="!ctrl.loading && !ctrl.loadingError && !ctrl.displayRows.length")
             img(
                 src="#{v}/images/empty/empty_moon.png",
                 alt="No schedule items"

@@ -129,7 +129,8 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         return
 
     changeQ: (q) ->
-        @filterQ = q
+        @filterQ = q or ""
+        @.updateDisplayRows()
         return
 
     toggleShowTags: ->
@@ -193,27 +194,29 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         return ""
 
     updateDisplayRows: ->
+        filteredRows = @._filterRowsByQuery(@rows, @filterQ)
+
         if @sortField == "type" and @typeOrderMode != null
-            @displayRows = @._orderRowsByType()
+            @displayRows = @._orderRowsByType(filteredRows)
             return
 
         if @sortField == "subject" and @subjectSortDirection?
-            @displayRows = @._orderRowsBySubject(@subjectSortDirection)
+            @displayRows = @._orderRowsBySubject(@subjectSortDirection, filteredRows)
             return
 
         if @sortField == "status" and @statusSortDirection?
-            @displayRows = @._orderRowsByStatus(@statusSortDirection)
+            @displayRows = @._orderRowsByStatus(@statusSortDirection, filteredRows)
             return
 
         if @_dateSortFields.indexOf(@sortField) != -1 and @dateSortDirections[@sortField]?
-            @displayRows = @._orderRowsByDate(@sortField, @dateSortDirections[@sortField])
+            @displayRows = @._orderRowsByDate(@sortField, @dateSortDirections[@sortField], filteredRows)
             return
 
-        @displayRows = @rows
+        @displayRows = filteredRows
 
-    _orderRowsByType: ->
+    _orderRowsByType: (sourceRows = @rows) ->
         orderedTypes = @_typeOrderCycles[@typeOrderMode] or @_typeOrderCycles[0]
-        groupedRows = _.groupBy(@rows, "type")
+        groupedRows = _.groupBy(sourceRows, "type")
         orderedRows = []
         includedTypes = {}
 
@@ -222,16 +225,16 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             orderedRows = orderedRows.concat(groupedRows[type] or [])
         )
 
-        _.each(@rows, (row) ->
+        _.each(sourceRows, (row) ->
             return if includedTypes[row.type]
             orderedRows.push(row)
         )
 
         return orderedRows
 
-    _orderRowsBySubject: (direction) ->
+    _orderRowsBySubject: (direction, sourceRows = @rows) ->
         isDescending = direction == "desc"
-        orderedRows = @rows.slice(0)
+        orderedRows = sourceRows.slice(0)
 
         orderedRows.sort (a, b) =>
             titleA = "#{@itemTitle(a)}"
@@ -248,9 +251,9 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return orderedRows
 
-    _orderRowsByStatus: (direction) ->
+    _orderRowsByStatus: (direction, sourceRows = @rows) ->
         isDescending = direction == "desc"
-        orderedRows = @rows.slice(0)
+        orderedRows = sourceRows.slice(0)
 
         orderedRows.sort (a, b) =>
             statusA = "#{@getStatusLabel(a)}"
@@ -265,9 +268,9 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return orderedRows
 
-    _orderRowsByDate: (field, direction) ->
+    _orderRowsByDate: (field, direction, sourceRows = @rows) ->
         isDescending = direction == "desc"
-        orderedRows = @rows.slice(0)
+        orderedRows = sourceRows.slice(0)
 
         orderedRows.sort (a, b) =>
             timestampA = @_toSortableTimestamp(a.item[field])
@@ -291,6 +294,33 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             if isDescending then -comparison else comparison
 
         return orderedRows
+
+    _filterRowsByQuery: (rows, query) ->
+        normalizedQuery = "#{query or ''}".trim().toLowerCase()
+        return rows if !normalizedQuery.length
+
+        queryWithoutHash = normalizedQuery.replace(/^#/, "")
+
+        return _.filter(rows, (row) =>
+            title = "#{@itemTitle(row)}".toLowerCase()
+            rawRef = row.item?.ref
+            ref = if rawRef? then "#{rawRef}".toLowerCase() else ""
+            refWithHash = if ref.length then "##{ref}" else ""
+            tags = row.tags or []
+
+            return true if title.indexOf(normalizedQuery) != -1
+            return true if refWithHash.indexOf(normalizedQuery) != -1
+            return true if queryWithoutHash.length and ref.indexOf(queryWithoutHash) != -1
+            return true if _.some(tags, (tag) ->
+                tagName = "#{tag?[0] or ''}".toLowerCase()
+                return false if !tagName.length
+                return true if tagName.indexOf(normalizedQuery) != -1
+                return true if queryWithoutHash.length and tagName.indexOf(queryWithoutHash) != -1
+                return false
+            )
+
+            return false
+        )
 
     _toSortableTimestamp: (dateValue) ->
         return null if !dateValue
