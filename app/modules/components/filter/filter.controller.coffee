@@ -107,7 +107,10 @@ class FilterController
         filterCategory.preset = null
 
         @.activeCustomFilter = null
-        @.onSetDateRange({range: {from: from, to: to, preset: null, mode: @.filterMode}})
+        @.onSetDateRange({
+            range: {from: from, to: to, preset: null, mode: @.filterMode}
+            dataType: filterCategory?.dataType
+        })
 
     clearDateRange: (filterCategory) ->
         filterCategory.fromInput = ""
@@ -116,9 +119,12 @@ class FilterController
         @.activeCustomFilter = null
 
         if @.onClearDateRange
-            @.onClearDateRange()
+            @.onClearDateRange({dataType: filterCategory?.dataType})
         else if @.onSetDateRange
-            @.onSetDateRange({range: {from: null, to: null}})
+            @.onSetDateRange({
+                range: {from: null, to: null}
+                dataType: filterCategory?.dataType
+            })
 
     applyDateRangePreset: (filterCategory, preset) ->
         return if !@.onSetDateRange
@@ -126,7 +132,16 @@ class FilterController
 
         filterCategory.preset = preset
         @.activeCustomFilter = null
-        @.onSetDateRange({range: {preset: preset, mode: @.filterMode}})
+        @.onSetDateRange({
+            range: {preset: preset, mode: @.filterMode}
+            dataType: filterCategory?.dataType
+        })
+
+    isDateRangeFilterDataType: (dataType) ->
+        return _.isString(dataType) and /_range$/.test(dataType)
+
+    isDateRangeFilter: (filterCategory) ->
+        return @.isDateRangeFilterDataType(filterCategory?.dataType)
 
     getIncludedFilters: () ->
         @.includedFilters = _.filter @.selectedFilters, (it) ->
@@ -142,7 +157,7 @@ class FilterController
 
     syncDateRangeInputs: () ->
         _.each @.filters or [], (filterCategory) =>
-            return if filterCategory?.dataType != "due_date_range"
+            return if !@.isDateRangeFilter(filterCategory)
 
             if filterCategory?.preset?
                 filterCategory.fromInput = ""
@@ -187,7 +202,7 @@ class FilterController
         return true if (@selectedFilters or []).length > 0
 
         return _.some(@filters or [], (filterCategory) =>
-            return false if filterCategory?.dataType != "due_date_range"
+            return false if !@.isDateRangeFilter(filterCategory)
             fromValue = @.normalizeDateRangeInput(filterCategory.fromInput or filterCategory.from)
             toValue = @.normalizeDateRangeInput(filterCategory.toInput or filterCategory.to)
             return !!(fromValue or toValue)

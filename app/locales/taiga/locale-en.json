@@ -1651,7 +1651,9 @@
     },
     "SCHEDULE": {
         "FILTERS": {
-            "DUE_DATE_RANGE": "Due date range",
+            "ESTIMATED_START_RANGE": "Estimated start",
+            "ACTUAL_START_RANGE": "Actual start",
+            "DUE_DATE_RANGE": "Due date",
             "DUE_DATE_FROM": "From",
             "DUE_DATE_TO": "To",
             "DUE_DATE_FROM_PLACEHOLDER": "Start date",

@@ -65,7 +65,7 @@
                 .single-applied-filter.ng-animate-disabled(
                     ng-repeat="it in vm.includedFilters | orderBy:'-mode' track by it.key"
                     class="{{it.mode}}"
-                    ng-class="{'is-multiline': it.dataType === 'due_date_range'}"
+                    ng-class="{'is-multiline': vm.isDateRangeFilterDataType(it.dataType)}"
                 )
                     .name(
                         ng-if="it.dataType === 'tags'"
@@ -86,7 +86,7 @@
                 .single-applied-filter.ng-animate-disabled(
                     ng-repeat="it in vm.excludedFilters | orderBy:'-mode' track by it.key"
                     class="{{it.mode}}"
-                    ng-class="{'is-multiline': it.dataType === 'due_date_range'}"
+                    ng-class="{'is-multiline': vm.isDateRangeFilterDataType(it.dataType)}"
                 )
                     .name(
                         ng-if="it.dataType === 'tags'"
@@ -149,7 +149,7 @@
                     tg-filter-slide-down
                 )
                     .filter-date-range(
-                        ng-if="filter.dataType === 'due_date_range'"
+                        ng-if="vm.isDateRangeFilter(filter)"
                     )
                         button.single-filter.single-filter-type-general(
                             type="button"
@@ -214,7 +214,7 @@
                             )
 
                     button.single-filter(
-                        ng-if="filter.dataType !== 'due_date_range'"
+                        ng-if="!vm.isDateRangeFilter(filter)"
                         ng-repeat="it in filter.content"
                         ng-class="{'single-filter-type-general': filter.dataType !== 'tags', 'single-filter-type-tag': filter.dataType === 'tags', 'single-filter-type-user': filter.dataType === 'assigned_users' || filter.dataType === 'owner'}"
                         ng-show="!vm.isFilterSelected(filter, it) && !(it.count == 0 && filter.hideEmpty)"

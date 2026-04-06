@@ -1653,6 +1653,8 @@
     },
     "SCHEDULE": {
         "FILTERS": {
+            "ESTIMATED_START_RANGE": "Intervalo de início estimado",
+            "ACTUAL_START_RANGE": "Intervalo de início real",
             "DUE_DATE_RANGE": "Intervalo de data de vencimento",
             "DUE_DATE_FROM": "De",
             "DUE_DATE_TO": "Até",

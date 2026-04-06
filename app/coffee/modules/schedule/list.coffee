@@ -40,13 +40,34 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.filters = []
         @.customFilters = []
         @.selectedFilters = []
-        @.dueDateRangeFilter = {
-            from: null
-            to: null
-            preset: null
-            mode: "include"
-        }
-        @.dueDatePresetBaseDate = moment().startOf("day").format("YYYY-MM-DD")
+        @._dateRangeFilterDefinitions = [
+            {
+                dataType: "estimated_start_range"
+                field: "estimated_start"
+                titleKey: "SCHEDULE.FILTERS.ESTIMATED_START_RANGE"
+                labelKey: "SCHEDULE.TABLE.COLUMNS.ESTIMATED_START"
+                configPrefix: "estimated_start"
+            }
+            {
+                dataType: "actual_start_range"
+                field: "actual_start"
+                titleKey: "SCHEDULE.FILTERS.ACTUAL_START_RANGE"
+                labelKey: "SCHEDULE.TABLE.COLUMNS.ACTUAL_START"
+                configPrefix: "actual_start"
+            }
+            {
+                dataType: "due_date_range"
+                field: "due_date"
+                titleKey: "SCHEDULE.FILTERS.DUE_DATE_RANGE"
+                labelKey: "COMMON.FIELDS.DUE_DATE"
+                configPrefix: "due_date"
+            }
+        ]
+        @.dateRangeFilters = {}
+        _.each(@._dateRangeFilterDefinitions, (definition) =>
+            @dateRangeFilters[definition.field] = @_emptyDateRangeFilter()
+        )
+        @.dateRangePresetBaseDate = moment().startOf("day").format("YYYY-MM-DD")
         @.customFiltersStoreName = "schedule-my-filters"
         @.sortField = null
         @.typeOrderMode = null
@@ -158,20 +179,21 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
     toggleShowTags: ->
         return
 
-    setDueDateRange: (range) ->
-        @dueDateRangeFilter = @_normalizeDueDateRange(range)
-        @_syncDueDateRangeSelectedFilter()
+    setDateRangeFilter: (range, dataType) ->
+        definition = @_getDateRangeDefinitionByDataType(dataType)
+        return if !definition?
+
+        @dateRangeFilters[definition.field] = @_normalizeDateRange(range)
+        @_syncDateRangeSelectedFilters()
         @.updateFilters()
         @.updateDisplayRows()
 
-    clearDueDateRange: ->
-        @dueDateRangeFilter = {
-            from: null
-            to: null
-            preset: null
-            mode: "include"
-        }
-        @_syncDueDateRangeSelectedFilter()
+    clearDateRangeFilter: (dataType) ->
+        definition = @_getDateRangeDefinitionByDataType(dataType)
+        return if !definition?
+
+        @dateRangeFilters[definition.field] = @_emptyDateRangeFilter()
+        @_syncDateRangeSelectedFilters()
         @.updateFilters()
         @.updateDisplayRows()
 
@@ -201,16 +223,12 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
     removeFilter: (filter) ->
         return if !filter?.key
 
-        if filter.dataType == "due_date_range"
-            @dueDateRangeFilter = {
-                from: null
-                to: null
-                preset: null
-                mode: "include"
-            }
+        definition = @_getDateRangeDefinitionByDataType(filter.dataType)
+        if definition?
+            @dateRangeFilters[definition.field] = @_emptyDateRangeFilter()
 
         @selectedFilters = _.filter(@selectedFilters, (it) -> it.key != filter.key)
-        @_syncDueDateRangeSelectedFilter()
+        @_syncDateRangeSelectedFilters()
         @.updateFilters()
         @.updateDisplayRows()
 
@@ -302,7 +320,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     updateFilters: ->
         rowsForCounts = @._filterRowsByQuery(@rows, @filterQ)
-        rowsForCounts = @._filterRowsByDueDateRange(rowsForCounts, @dueDateRangeFilter)
+        rowsForCounts = @._applyDateRangeFilters(rowsForCounts)
         rowsForCounts = @._filterRowsByAdvancedSelections(rowsForCounts, @selectedFilters)
 
         typeCounts = _.countBy(rowsForCounts, "type")
@@ -385,6 +403,19 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         statusContent = _.sortBy(_.values(statusesById), (it) -> "#{it.name}".toLowerCase())
         tagsContent = _.sortBy(_.values(tagsByName), (it) -> it.name.toLowerCase())
+        dateRangeFilterContent = _.map(@_dateRangeFilterDefinitions, (definition) =>
+            rangeFilter = @dateRangeFilters[definition.field] or @_emptyDateRangeFilter()
+            return {
+                title: @translate.instant(definition.titleKey)
+                dataType: definition.dataType
+                hideEmpty: false
+                totalTaggedElements: 1
+                from: rangeFilter.from
+                to: rangeFilter.to
+                preset: rangeFilter.preset
+                content: []
+            }
+        )
 
         @filters = [
             {
@@ -401,16 +432,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
                 totalTaggedElements: statusContent.length
                 content: statusContent
             }
-            {
-                title: @translate.instant("SCHEDULE.FILTERS.DUE_DATE_RANGE")
-                dataType: "due_date_range"
-                hideEmpty: false
-                totalTaggedElements: 1
-                from: @dueDateRangeFilter.from
-                to: @dueDateRangeFilter.to
-                preset: @dueDateRangeFilter.preset
-                content: []
-            }
+        ].concat(dateRangeFilterContent).concat([
             {
                 title: @translate.instant("COMMON.FILTERS.CATEGORIES.TAGS")
                 dataType: "tags"
@@ -425,11 +447,11 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
                 totalTaggedElements: assignedContent.length
                 content: assignedContent
             }
-        ]
+        ])
 
     updateDisplayRows: ->
         filteredRows = @._filterRowsByQuery(@rows, @filterQ)
-        filteredRows = @._filterRowsByDueDateRange(filteredRows, @dueDateRangeFilter)
+        filteredRows = @._applyDateRangeFilters(filteredRows)
         filteredRows = @._filterRowsByAdvancedSelections(filteredRows, @selectedFilters)
 
         if @sortField == "type" and @typeOrderMode != null
@@ -594,9 +616,9 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
     _serializeSelectedFilters: ->
         config = {}
 
-        _.each @selectedFilters, (filter) ->
+        _.each @selectedFilters, (filter) =>
             dataType = "#{filter?.dataType or ''}".trim()
-            return if dataType == "due_date_range"
+            return if @_isDateRangeDataType(dataType)
             id = "#{filter?.id or ''}".trim()
             return if !dataType.length or !id.length
 
@@ -613,28 +635,36 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             existingIds.push(id)
             config[key] = existingIds.join(",")
 
-        if @dueDateRangeFilter?.preset?
-            config.due_date_preset = @dueDateRangeFilter.preset
-        else
-            if @dueDateRangeFilter?.from?
-                config.due_date_from = @dueDateRangeFilter.from
+        _.each(@_dateRangeFilterDefinitions, (definition) =>
+            rangeFilter = @dateRangeFilters[definition.field] or @_emptyDateRangeFilter()
+            prefix = definition.configPrefix
 
-            if @dueDateRangeFilter?.to?
-                config.due_date_to = @dueDateRangeFilter.to
+            if rangeFilter?.preset?
+                config["#{prefix}_preset"] = rangeFilter.preset
+            else
+                if rangeFilter?.from?
+                    config["#{prefix}_from"] = rangeFilter.from
 
-        if @dueDateRangeFilter?.mode == "exclude"
-            config.due_date_mode = "exclude"
+                if rangeFilter?.to?
+                    config["#{prefix}_to"] = rangeFilter.to
+
+            if rangeFilter?.mode == "exclude"
+                config["#{prefix}_mode"] = "exclude"
+        )
 
         return config
 
     _selectedFiltersFromConfig: (config) ->
         normalizedConfig = config or {}
-        @dueDateRangeFilter = @_normalizeDueDateRange({
-            from: normalizedConfig.due_date_from
-            to: normalizedConfig.due_date_to
-            preset: normalizedConfig.due_date_preset
-            mode: normalizedConfig.due_date_mode
-        })
+        _.each(@_dateRangeFilterDefinitions, (definition) =>
+            prefix = definition.configPrefix
+            @dateRangeFilters[definition.field] = @_normalizeDateRange({
+                from: normalizedConfig["#{prefix}_from"]
+                to: normalizedConfig["#{prefix}_to"]
+                preset: normalizedConfig["#{prefix}_preset"]
+                mode: normalizedConfig["#{prefix}_mode"]
+            })
+        )
         availableFilterOptions = {}
 
         _.each @filters, (category) ->
@@ -657,8 +687,11 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("assigned_to", normalizedConfig.assigned_to, "include", availableFilterOptions))
         selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("assigned_to", normalizedConfig.exclude_assigned_to, "exclude", availableFilterOptions))
 
-        dueDateRangeFilter = @_buildDueDateRangeSelectedFilter(@dueDateRangeFilter)
-        selectedFilters.push(dueDateRangeFilter) if dueDateRangeFilter?
+        _.each(@_dateRangeFilterDefinitions, (definition) =>
+            rangeFilter = @dateRangeFilters[definition.field] or @_emptyDateRangeFilter()
+            selectedRangeFilter = @_buildDateRangeSelectedFilter(definition.dataType, rangeFilter)
+            selectedFilters.push(selectedRangeFilter) if selectedRangeFilter?
+        )
 
         return selectedFilters
 
@@ -730,8 +763,18 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return true
 
-    _filterRowsByDueDateRange: (rows, range = @dueDateRangeFilter) ->
-        normalizedRange = @_normalizeDueDateRange(range)
+    _applyDateRangeFilters: (rows) ->
+        filteredRows = rows
+
+        _.each(@_dateRangeFilterDefinitions, (definition) =>
+            rangeFilter = @dateRangeFilters[definition.field] or @_emptyDateRangeFilter()
+            filteredRows = @_filterRowsByDateRange(filteredRows, rangeFilter, definition.field)
+        )
+
+        return filteredRows
+
+    _filterRowsByDateRange: (rows, range, fieldName) ->
+        normalizedRange = @_normalizeDateRange(range)
         fromDate = normalizedRange.from
         toDate = normalizedRange.to
         mode = normalizedRange.mode
@@ -739,10 +782,10 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         return rows if !fromDate? and !toDate?
 
         isInRange = (row) =>
-            dueDateValue = @_normalizeDateFilterInput(row.item?.due_date)
-            return false if !dueDateValue?
-            return false if fromDate? and dueDateValue < fromDate
-            return false if toDate? and dueDateValue > toDate
+            dateFieldValue = @_normalizeDateFilterInput(row.item?[fieldName])
+            return false if !dateFieldValue?
+            return false if fromDate? and dateFieldValue < fromDate
+            return false if toDate? and dateFieldValue > toDate
             return true
 
         if mode == "exclude"
@@ -750,7 +793,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return _.filter(rows, (row) => isInRange(row))
 
-    _normalizeDueDateRange: (range = {}) ->
+    _normalizeDateRange: (range = {}) ->
         fromDate = @_normalizeDateFilterInput(range?.from)
         toDate = @_normalizeDateFilterInput(range?.to)
         preset = "#{range?.preset or ''}".trim()
@@ -758,7 +801,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         mode = if range?.mode == "exclude" then "exclude" else "include"
 
         if preset?
-            presetRange = @_resolveDueDatePreset(preset)
+            presetRange = @_resolveDateRangePreset(preset)
             if presetRange?
                 fromDate = presetRange.from
                 toDate = presetRange.to
@@ -775,8 +818,8 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             mode: mode
         }
 
-    _resolveDueDatePreset: (preset) ->
-        baseDate = moment(@.dueDatePresetBaseDate, "YYYY-MM-DD", true)
+    _resolveDateRangePreset: (preset) ->
+        baseDate = moment(@.dateRangePresetBaseDate, "YYYY-MM-DD", true)
         return null if !baseDate.isValid()
 
         endDate = null
@@ -796,38 +839,58 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             to: endDate.format("YYYY-MM-DD")
         }
 
-    _syncDueDateRangeSelectedFilter: ->
-        @selectedFilters = _.filter(@selectedFilters, (it) -> it?.dataType != "due_date_range")
+    _syncDateRangeSelectedFilters: ->
+        @selectedFilters = _.filter(@selectedFilters, (it) => !@_isDateRangeDataType(it?.dataType))
 
-        dueDateRangeFilter = @_buildDueDateRangeSelectedFilter(@dueDateRangeFilter)
-        @selectedFilters = @selectedFilters.concat([dueDateRangeFilter]) if dueDateRangeFilter?
+        _.each(@_dateRangeFilterDefinitions, (definition) =>
+            rangeFilter = @dateRangeFilters[definition.field] or @_emptyDateRangeFilter()
+            selectedRangeFilter = @_buildDateRangeSelectedFilter(definition.dataType, rangeFilter)
+            @selectedFilters = @selectedFilters.concat([selectedRangeFilter]) if selectedRangeFilter?
+        )
 
-    _buildDueDateRangeSelectedFilter: (range = @dueDateRangeFilter) ->
-        normalizedRange = @_normalizeDueDateRange(range)
+    _buildDateRangeSelectedFilter: (dataType, range) ->
+        normalizedRange = @_normalizeDateRange(range)
         return null if !normalizedRange.from? and !normalizedRange.to?
 
-        dueDateLabel = @translate.instant("COMMON.FIELDS.DUE_DATE")
-        presetLabel = @_dueDatePresetLabel(normalizedRange.preset)
+        definition = @_getDateRangeDefinitionByDataType(dataType)
+        return null if !definition?
+
+        fieldLabel = @translate.instant(definition.labelKey)
+        presetLabel = @_dateRangePresetLabel(normalizedRange.preset)
         fromLabel = @formatDate(normalizedRange.from)
         toLabel = @formatDate(normalizedRange.to)
-        filterLabel = if presetLabel? then "#{dueDateLabel}: #{presetLabel}" else "#{dueDateLabel}: #{fromLabel} - #{toLabel}"
+        filterLabel = if presetLabel? then "#{fieldLabel}: #{presetLabel}" else "#{fieldLabel}: #{fromLabel} - #{toLabel}"
         mode = normalizedRange.mode
 
         return {
             id: normalizedRange.preset or "range"
             name: filterLabel
-            dataType: "due_date_range"
+            dataType: dataType
             mode: mode
-            key: "#{mode}-due_date_range-#{normalizedRange.preset or 'range'}"
+            key: "#{mode}-#{dataType}-#{normalizedRange.preset or 'range'}"
         }
 
-    _dueDatePresetLabel: (preset) ->
+    _dateRangePresetLabel: (preset) ->
         return null if !preset?
         return @translate.instant("LIGHTBOX.SET_DUE_DATE.SUGGESTIONS.IN_ONE_WEEK") if preset == "in_one_week"
         return @translate.instant("LIGHTBOX.SET_DUE_DATE.SUGGESTIONS.IN_TWO_WEEKS") if preset == "in_two_weeks"
         return @translate.instant("LIGHTBOX.SET_DUE_DATE.SUGGESTIONS.IN_ONE_MONTH") if preset == "in_one_month"
         return @translate.instant("LIGHTBOX.SET_DUE_DATE.SUGGESTIONS.IN_THREE_MONTHS") if preset == "in_three_months"
         return null
+
+    _emptyDateRangeFilter: ->
+        return {
+            from: null
+            to: null
+            preset: null
+            mode: "include"
+        }
+
+    _getDateRangeDefinitionByDataType: (dataType) ->
+        return _.find(@_dateRangeFilterDefinitions, (definition) -> definition.dataType == dataType) or null
+
+    _isDateRangeDataType: (dataType) ->
+        return !!@_getDateRangeDefinitionByDataType(dataType)
 
     _normalizeDateFilterInput: (dateValue) ->
         if _.isDate(dateValue)
