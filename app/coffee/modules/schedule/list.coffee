@@ -302,6 +302,27 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             )
         )
 
+        statusesById = {}
+        _.each(rowsForCounts, (row) =>
+            statusId = @_getStatusFilterId(row)
+            return if !statusId?
+
+            statusName = @getStatusLabel(row)
+            statusColor = @getStatusColor(row)
+
+            if !statusesById[statusId]
+                statusesById[statusId] = {
+                    id: statusId
+                    name: statusName
+                    count: 0
+                    color: statusColor
+                }
+
+            statusesById[statusId].count += 1
+            statusesById[statusId].color = statusColor if !statusesById[statusId].color and statusColor
+        )
+
+        statusContent = _.sortBy(_.values(statusesById), (it) -> "#{it.name}".toLowerCase())
         tagsContent = _.sortBy(_.values(tagsByName), (it) -> it.name.toLowerCase())
 
         @filters = [
@@ -311,6 +332,13 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
                 hideEmpty: false
                 totalTaggedElements: typeContent.length
                 content: typeContent
+            }
+            {
+                title: @translate.instant("COMMON.FILTERS.CATEGORIES.STATUS")
+                dataType: "status"
+                hideEmpty: false
+                totalTaggedElements: statusContent.length
+                content: statusContent
             }
             {
                 title: @translate.instant("COMMON.FILTERS.CATEGORIES.TAGS")
@@ -441,10 +469,12 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         selectedByDataType = _.groupBy(selectedFilters, "dataType")
         typeFilters = selectedByDataType.type or []
+        statusFilters = selectedByDataType.status or []
         tagFilters = selectedByDataType.tags or []
 
         return _.filter(rows, (row) =>
             return false if !@_matchTypeFilters(row, typeFilters)
+            return false if !@_matchStatusFilters(row, statusFilters)
             return false if !@_matchTagFilters(row, tagFilters)
             return true
         )
@@ -461,6 +491,21 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             return false
 
         if excludeIds.indexOf(typeValue) != -1
+            return false
+
+        return true
+
+    _matchStatusFilters: (row, filters) ->
+        return true if !filters?.length
+
+        includeIds = _.chain(filters).filter((f) -> f.mode == "include").map((f) -> "#{f.id}".toLowerCase()).value()
+        excludeIds = _.chain(filters).filter((f) -> f.mode == "exclude").map((f) -> "#{f.id}".toLowerCase()).value()
+        statusKeys = @_getStatusFilterMatchKeys(row)
+
+        if includeIds.length and !_.some(includeIds, (id) -> statusKeys.indexOf(id) != -1)
+            return false
+
+        if _.some(excludeIds, (id) -> statusKeys.indexOf(id) != -1)
             return false
 
         return true
@@ -505,6 +550,8 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         selectedFilters = []
         selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("type", normalizedConfig.type, "include", availableFilterOptions))
         selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("type", normalizedConfig.exclude_type, "exclude", availableFilterOptions))
+        selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("status", normalizedConfig.status, "include", availableFilterOptions))
+        selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("status", normalizedConfig.exclude_status, "exclude", availableFilterOptions))
         selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("tags", normalizedConfig.tags, "include", availableFilterOptions))
         selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("tags", normalizedConfig.exclude_tags, "exclude", availableFilterOptions))
 
@@ -626,6 +673,50 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     getStatusColor: (row) ->
         return row.item?.status_extra_info?.color or row.item?.status?.color or null
+
+    _getStatusFilterId: (row) ->
+        statusLabel = @getStatusLabel(row)
+        normalizedLabel = "#{statusLabel or ''}".trim()
+        return normalizedLabel.toLowerCase() if normalizedLabel.length
+
+        statusId = row.item?.status_extra_info?.id
+        return "#{statusId}".toLowerCase() if statusId?
+
+        statusObjectId = row.item?.status?.id
+        return "#{statusObjectId}".toLowerCase() if statusObjectId?
+
+        rawStatus = row.item?.status
+        if _.isString(rawStatus) or _.isNumber(rawStatus)
+            return "#{rawStatus}".toLowerCase()
+
+        return null
+
+    _getLegacyStatusFilterId: (row) ->
+        statusId = row.item?.status_extra_info?.id
+        return "#{row.type}:#{statusId}".toLowerCase() if statusId?
+
+        statusObjectId = row.item?.status?.id
+        return "#{row.type}:#{statusObjectId}".toLowerCase() if statusObjectId?
+
+        rawStatus = row.item?.status
+        if _.isString(rawStatus) or _.isNumber(rawStatus)
+            return "#{row.type}:#{rawStatus}".toLowerCase()
+
+        statusLabel = @getStatusLabel(row)
+        normalizedLabel = "#{statusLabel or ''}".trim()
+        return "#{row.type}:#{normalizedLabel}".toLowerCase() if normalizedLabel.length
+
+        return null
+
+    _getStatusFilterMatchKeys: (row) ->
+        keys = []
+        statusId = @_getStatusFilterId(row)
+        legacyStatusId = @_getLegacyStatusFilterId(row)
+
+        keys.push(statusId) if statusId?
+        keys.push(legacyStatusId) if legacyStatusId?
+
+        return _.uniq(keys)
 
     getStatusStyle: (row) ->
         color = @getStatusColor(row)
