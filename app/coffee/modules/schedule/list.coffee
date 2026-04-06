@@ -322,6 +322,33 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             statusesById[statusId].color = statusColor if !statusesById[statusId].color and statusColor
         )
 
+        assigneeCounts = {}
+        _.each(rowsForCounts, (row) =>
+            assigneeId = @_getAssignedToFilterId(row)
+            assigneeCounts[assigneeId] = (assigneeCounts[assigneeId] or 0) + 1
+        )
+
+        assignedContent = _.map(@scope.project?.members or [], (member) =>
+            memberId = "#{member?.id or ''}".trim()
+            return null if !memberId.length
+
+            memberName = member.full_name_display or member.full_name or member.username or memberId
+
+            return {
+                id: memberId
+                name: memberName
+                count: assigneeCounts[memberId] or 0
+            }
+        )
+
+        assignedContent = _.compact(assignedContent)
+        assignedContent = _.sortBy(assignedContent, (it) -> "#{it.name}".toLowerCase())
+        assignedContent.unshift({
+            id: "null"
+            name: @translate.instant("COMMON.ASSIGNED_TO.NOT_ASSIGNED")
+            count: assigneeCounts["null"] or 0
+        })
+
         statusContent = _.sortBy(_.values(statusesById), (it) -> "#{it.name}".toLowerCase())
         tagsContent = _.sortBy(_.values(tagsByName), (it) -> it.name.toLowerCase())
 
@@ -346,6 +373,13 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
                 hideEmpty: false
                 totalTaggedElements: tagsContent.length
                 content: tagsContent
+            }
+            {
+                title: @translate.instant("COMMON.FILTERS.CATEGORIES.ASSIGNED_TO")
+                dataType: "assigned_to"
+                hideEmpty: false
+                totalTaggedElements: assignedContent.length
+                content: assignedContent
             }
         ]
 
@@ -471,11 +505,13 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         typeFilters = selectedByDataType.type or []
         statusFilters = selectedByDataType.status or []
         tagFilters = selectedByDataType.tags or []
+        assignedFilters = selectedByDataType.assigned_to or []
 
         return _.filter(rows, (row) =>
             return false if !@_matchTypeFilters(row, typeFilters)
             return false if !@_matchStatusFilters(row, statusFilters)
             return false if !@_matchTagFilters(row, tagFilters)
+            return false if !@_matchAssignedToFilters(row, assignedFilters)
             return true
         )
 
@@ -554,15 +590,17 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("status", normalizedConfig.exclude_status, "exclude", availableFilterOptions))
         selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("tags", normalizedConfig.tags, "include", availableFilterOptions))
         selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("tags", normalizedConfig.exclude_tags, "exclude", availableFilterOptions))
+        selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("assigned_to", normalizedConfig.assigned_to, "include", availableFilterOptions))
+        selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("assigned_to", normalizedConfig.exclude_assigned_to, "exclude", availableFilterOptions))
 
         return selectedFilters
 
     _deserializeFilterCategory: (dataType, storedValue, mode, availableFilterOptions) ->
         ids = @._toFilterIdList(storedValue)
 
-        return _.map(ids, (id) ->
+        return _.map(ids, (id) =>
             option = availableFilterOptions[dataType]?[id]
-            name = option?.name or id
+            name = option?.name or @._fallbackFilterName(dataType, id)
 
             return {
                 id: id
@@ -586,6 +624,15 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         ids = _.filter(ids, (id) -> id.length)
         return _.uniq(ids)
 
+    _fallbackFilterName: (dataType, id) ->
+        if dataType == "assigned_to"
+            return @translate.instant("COMMON.ASSIGNED_TO.NOT_ASSIGNED") if id == "null"
+
+            member = @projectMembersById[id]
+            return member.full_name_display or member.full_name or member.username or id if member
+
+        return id
+
     _matchTagFilters: (row, filters) ->
         return true if !filters?.length
 
@@ -597,6 +644,21 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             return false
 
         if _.some(excludeIds, (id) -> tagNames.indexOf(id) != -1)
+            return false
+
+        return true
+
+    _matchAssignedToFilters: (row, filters) ->
+        return true if !filters?.length
+
+        includeIds = _.chain(filters).filter((f) -> f.mode == "include").map((f) -> "#{f.id}".toLowerCase()).value()
+        excludeIds = _.chain(filters).filter((f) -> f.mode == "exclude").map((f) -> "#{f.id}".toLowerCase()).value()
+        assignedValue = @_getAssignedToFilterId(row).toLowerCase()
+
+        if includeIds.length and includeIds.indexOf(assignedValue) == -1
+            return false
+
+        if excludeIds.indexOf(assignedValue) != -1
             return false
 
         return true
@@ -722,6 +784,11 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         color = @getStatusColor(row)
         return {} if !color
         return {"color": color}
+
+    _getAssignedToFilterId: (row) ->
+        assignedTo = row.item?.assigned_to
+        return "#{assignedTo}" if assignedTo?
+        return "null"
 
     getAssignedToMember: (row) ->
         member = row.item?.assigned_to_extra_info
