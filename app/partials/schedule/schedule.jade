@@ -16,6 +16,37 @@ div.wrapper.issues.schedule(
         .issue-top
             header.issue-header
                 include ../includes/components/mainTitle
+                .taskboard-actions
+                    .issue-table-options-start
+                        button.btn-filter.e2e-open-filter(
+                            type="button"
+                            ng-click="ctrl.onFilterButtonClick()"
+                            title="{{ 'BACKLOG.FILTERS.TITLE' | translate }}"
+                        )
+                            tg-svg(svg-icon="icon-filters")
+                            span.text(translate="BACKLOG.FILTERS.TITLE")
+
+                        tg-input-search(
+                            q="ctrl.filterQ"
+                            change="ctrl.changeQ(q)"
+                        )
+
+                        .display-tags-button#show-tags
+                            .check.js-check(
+                                ng-class="{'active': ctrl.showTags}"
+                            )
+                                input(
+                                    type="checkbox"
+                                    id="show-tags-input"
+                                    ng-checked="ctrl.showTags"
+                                    ng-model="ctrl.showTags"
+                                    ng-change="ctrl.toggleShowTags()"
+                                )
+                                div
+                            label(
+                                for="show-tags-input"
+                                translate="BACKLOG.TAGS.SHOW"
+                            )
 
         p(ng-if="ctrl.loading") Loading schedule...
         p(ng-if="ctrl.loadingError") Unable to load schedule data.
@@ -83,6 +114,13 @@ div.wrapper.issues.schedule(
                     .schedule-item-content
                         span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
                         span.issue-subject {{ ctrl.itemTitle(row) }}
+                        span.tag(
+                            ng-if="ctrl.showTags"
+                            ng-attr-title="{{tag[0]}}"
+                            ng-repeat="tag in row.tags"
+                            ng-style="{background: tag[1]}"
+                            ng-class="{'last':$last}"
+                        ) {{tag[0]}}
 
                 div.issue-field.schedule-date-cell
                     button.schedule-date-value(

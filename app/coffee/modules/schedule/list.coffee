@@ -33,6 +33,9 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.loading = false
         @.loadingError = false
         @.savingKey = null
+        @.openFilter = false
+        @.filterQ = ""
+        @.showTags = true
         @.sortField = null
         @.typeOrderMode = null
         @.subjectSortDirection = null
@@ -92,13 +95,44 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             return @q.reject(xhr)
 
     _toRows: (items, type, typeLabel) ->
-        return _.map(items, (item) ->
+        return _.map(items, (item) =>
             return {
                 item: item
                 type: type
                 typeLabel: typeLabel
+                tags: @._normalizeTags(item.tags)
             }
         )
+
+    _normalizeTags: (tags) ->
+        return [] if !tags?.length
+
+        return _.chain(tags)
+            .map (tag) ->
+                if _.isArray(tag)
+                    name = "#{tag[0] or ''}".trim()
+                    color = tag[1] or "#8f96b2"
+                else if _.isObject(tag)
+                    name = "#{tag.name or tag.value or ''}".trim()
+                    color = tag.color or "#8f96b2"
+                else
+                    name = "#{tag}".trim()
+                    color = "#8f96b2"
+
+                return null if !name.length
+                return [name, color]
+            .compact()
+            .value()
+
+    onFilterButtonClick: ->
+        return
+
+    changeQ: (q) ->
+        @filterQ = q
+        return
+
+    toggleShowTags: ->
+        return
 
     cycleTypeOrder: ->
         @sortField = "type"
