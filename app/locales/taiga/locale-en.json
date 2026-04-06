@@ -1649,6 +1649,17 @@
             }
         }
     },
+    "SCHEDULE": {
+        "TABLE": {
+            "COLUMNS": {
+                "TYPE": "Type",
+                "SUBJECT": "Subject",
+                "ESTIMATED_START": "Estimated Start",
+                "ACTUAL_START": "Actual Start",
+                "DUE_DATE": "Due Date"
+            }
+        }
+    },
     "ISSUE": {
         "PAGE_TITLE": "{{issueSubject}} - Issue {{issueRef}} - {{projectName}}",
         "PAGE_DESCRIPTION": "Status: {{issueStatus }}. Type: {{issueType}}, Priority: {{issuePriority}}. Severity: {{issueSeverity}}. Description: {{issueDescription}}"

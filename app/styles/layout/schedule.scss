@@ -4,6 +4,12 @@
             [data-fieldname] {
                 outline: none;
             }
+
+            .issue-field,
+            .modified-field,
+            .assigned-field {
+                justify-content: flex-end;
+            }
         }
 
         .issue-field {
