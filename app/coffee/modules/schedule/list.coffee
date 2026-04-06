@@ -21,10 +21,11 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         "tgLightboxFactory",
         "$translate",
         "tgProjectService",
-        "tgErrorHandlingService"
+        "tgErrorHandlingService",
+        "tgFilterRemoteStorageService"
     ]
 
-    constructor: (@scope, @q, @repo, @confirm, @lightboxFactory, @translate, @projectService, @errorHandlingService) ->
+    constructor: (@scope, @q, @repo, @confirm, @lightboxFactory, @translate, @projectService, @errorHandlingService, @filterRemoteStorageService) ->
         bindMethods(@)
 
         @scope.sectionName = "PROJECT.SECTION.SCHEDULE"
@@ -36,6 +37,10 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.openFilter = false
         @.filterQ = ""
         @.showTags = true
+        @.filters = []
+        @.customFilters = []
+        @.selectedFilters = []
+        @.customFiltersStoreName = "schedule-my-filters"
         @.sortField = null
         @.typeOrderMode = null
         @.subjectSortDirection = null
@@ -72,10 +77,11 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             @repo.queryMany("epics", {project: @scope.projectId, include_schedule: true})
             @repo.queryMany("userstories", {project: @scope.projectId, include_schedule: true})
             @repo.queryMany("tasks", {project: @scope.projectId, include_schedule: true})
+            @filterRemoteStorageService.getFilters(@scope.projectId, @customFiltersStoreName)
         ]
 
         @q.all(promises).then (result) =>
-            [epics, userstories, tasks] = result
+            [epics, userstories, tasks, customFiltersRaw] = result
 
             rows = []
             rows = rows.concat(@._toRows(epics, "epic", "Epic"))
@@ -83,6 +89,8 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             rows = rows.concat(@._toRows(tasks, "task", "Task"))
 
             @.rows = rows
+            @.setCustomFilters(customFiltersRaw)
+            @.updateFilters()
             @.updateDisplayRows()
             @.loading = false
             return rows
@@ -130,11 +138,71 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     changeQ: (q) ->
         @filterQ = q or ""
+        @.updateFilters()
         @.updateDisplayRows()
         return
 
     toggleShowTags: ->
         return
+
+    addFilter: (newFilter) ->
+        filterCategory = newFilter?.category
+        filterItem = newFilter?.filter
+        mode = newFilter?.mode or "include"
+
+        return if !filterCategory?.dataType
+        return if !filterItem?.id?
+
+        selectedFilter = {
+            id: filterItem.id
+            name: filterItem.name
+            dataType: filterCategory.dataType
+            mode: mode
+            key: "#{mode}-#{filterCategory.dataType}-#{filterItem.id}"
+        }
+
+        alreadySelected = _.find(@selectedFilters, (it) -> it.key == selectedFilter.key)
+        return if alreadySelected
+
+        @selectedFilters = @selectedFilters.concat([selectedFilter])
+        @.updateFilters()
+        @.updateDisplayRows()
+
+    removeFilter: (filter) ->
+        return if !filter?.key
+
+        @selectedFilters = _.filter(@selectedFilters, (it) -> it.key != filter.key)
+        @.updateFilters()
+        @.updateDisplayRows()
+
+    saveCustomFilter: (name) ->
+        filterName = "#{name or ''}".trim()
+        return if !filterName.length
+
+        filterConfig = @._serializeSelectedFilters()
+
+        @filterRemoteStorageService.getFilters(@scope.projectId, @customFiltersStoreName).then (userFilters) =>
+            userFilters = userFilters or {}
+            userFilters[filterName] = filterConfig
+
+            @filterRemoteStorageService.storeFilters(@scope.projectId, userFilters, @customFiltersStoreName).then =>
+                @.setCustomFilters(userFilters)
+
+    selectCustomFilter: (customFilter) ->
+        @filterQ = ""
+        @selectedFilters = @._selectedFiltersFromConfig(customFilter?.filter)
+        @.updateFilters()
+        @.updateDisplayRows()
+
+    removeCustomFilter: (customFilter) ->
+        return if !customFilter?.id
+
+        @filterRemoteStorageService.getFilters(@scope.projectId, @customFiltersStoreName).then (userFilters) =>
+            userFilters = userFilters or {}
+            delete userFilters[customFilter.id]
+
+            @filterRemoteStorageService.storeFilters(@scope.projectId, userFilters, @customFiltersStoreName).then =>
+                @.setCustomFilters(userFilters)
 
     cycleTypeOrder: ->
         @sortField = "type"
@@ -193,8 +261,63 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return ""
 
+    updateFilters: ->
+        rowsForCounts = @._filterRowsByQuery(@rows, @filterQ)
+        rowsForCounts = @._filterRowsByAdvancedSelections(rowsForCounts, @selectedFilters)
+
+        typeCounts = _.countBy(rowsForCounts, "type")
+        orderedTypes = ["epic", "userstory", "task"]
+
+        typeContent = _.map(orderedTypes, (type) =>
+            return {
+                id: type
+                name: @._typeFilterLabel(type)
+                count: typeCounts[type] or 0
+            }
+        )
+
+        tagsByName = {}
+        _.each(rowsForCounts, (row) ->
+            _.each(row.tags or [], (tag) ->
+                name = "#{tag?[0] or ''}".trim()
+                color = tag?[1] or null
+                return if !name.length
+
+                if !tagsByName[name]
+                    tagsByName[name] = {
+                        id: name
+                        name: name
+                        count: 0
+                        color: color
+                    }
+
+                tagsByName[name].count += 1
+                tagsByName[name].color = color if !tagsByName[name].color and color
+            )
+        )
+
+        tagsContent = _.sortBy(_.values(tagsByName), (it) -> it.name.toLowerCase())
+
+        @filters = [
+            {
+                title: @translate.instant("COMMON.FILTERS.CATEGORIES.TYPE")
+                dataType: "type"
+                hideEmpty: false
+                totalTaggedElements: typeContent.length
+                content: typeContent
+            }
+            {
+                title: @translate.instant("COMMON.FILTERS.CATEGORIES.TAGS")
+                dataType: "tags"
+                hideEmpty: false
+                totalTaggedElements: tagsContent.length
+                content: tagsContent
+            }
+        ]
+
     updateDisplayRows: ->
         filteredRows = @._filterRowsByQuery(@rows, @filterQ)
+        filteredRows = @._filterRowsByAdvancedSelections(filteredRows, @selectedFilters)
 
         if @sortField == "type" and @typeOrderMode != null
             @displayRows = @._orderRowsByType(filteredRows)
@@ -213,6 +336,18 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             return
 
         @displayRows = filteredRows
+
+    setCustomFilters: (customFiltersRaw = {}) ->
+        @customFilters = []
+
+        _.forOwn customFiltersRaw, (value, key) =>
+            @customFilters.push({
+                id: key
+                name: key
+                filter: value
+            })
+
+        @customFilters = _.sortBy(@customFilters, (it) -> "#{it.name}".toLowerCase())
 
     _orderRowsByType: (sourceRows = @rows) ->
         orderedTypes = @_typeOrderCycles[@typeOrderMode] or @_typeOrderCycles[0]
@@ -295,6 +430,124 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return orderedRows
 
+    _filterRowsByAdvancedSelections: (rows, selectedFilters) ->
+        return rows if !selectedFilters?.length
+
+        selectedByDataType = _.groupBy(selectedFilters, "dataType")
+        typeFilters = selectedByDataType.type or []
+        tagFilters = selectedByDataType.tags or []
+
+        return _.filter(rows, (row) =>
+            return false if !@_matchTypeFilters(row, typeFilters)
+            return false if !@_matchTagFilters(row, tagFilters)
+            return true
+        )
+
+    _matchTypeFilters: (row, filters) ->
+        return true if !filters?.length
+
+        includeIds = _.chain(filters).filter((f) -> f.mode == "include").map((f) -> "#{f.id}".toLowerCase()).value()
+        excludeIds = _.chain(filters).filter((f) -> f.mode == "exclude").map((f) -> "#{f.id}".toLowerCase()).value()
+
+        typeValue = "#{row.type or ''}".toLowerCase()
+
+        if includeIds.length and includeIds.indexOf(typeValue) == -1
+            return false
+
+        if excludeIds.indexOf(typeValue) != -1
+            return false
+
+        return true
+
+    _serializeSelectedFilters: ->
+        config = {}
+
+        _.each @selectedFilters, (filter) ->
+            dataType = "#{filter?.dataType or ''}".trim()
+            id = "#{filter?.id or ''}".trim()
+            return if !dataType.length or !id.length
+
+            mode = if filter.mode == "exclude" then "exclude" else "include"
+            key = if mode == "exclude" then "exclude_#{dataType}" else dataType
+
+            existingIds = []
+            if _.isString(config[key])
+                existingIds = _.map(config[key].split(","), (value) -> "#{value}".trim())
+                existingIds = _.filter(existingIds, (value) -> value.length)
+
+            return if existingIds.indexOf(id) != -1
+
+            existingIds.push(id)
+            config[key] = existingIds.join(",")
+
+        return config
+
+    _selectedFiltersFromConfig: (config) ->
+        normalizedConfig = config or {}
+        availableFilterOptions = {}
+
+        _.each @filters, (category) ->
+            dataType = category?.dataType
+            return if !dataType?
+
+            availableFilterOptions[dataType] = {}
+            _.each category.content or [], (it) ->
+                id = "#{it?.id or ''}".trim()
+                return if !id.length
+                availableFilterOptions[dataType][id] = it
+
+        selectedFilters = []
+        selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("type", normalizedConfig.type, "include", availableFilterOptions))
+        selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("type", normalizedConfig.exclude_type, "exclude", availableFilterOptions))
+        selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("tags", normalizedConfig.tags, "include", availableFilterOptions))
+        selectedFilters = selectedFilters.concat(@._deserializeFilterCategory("tags", normalizedConfig.exclude_tags, "exclude", availableFilterOptions))
+
+        return selectedFilters
+
+    _deserializeFilterCategory: (dataType, storedValue, mode, availableFilterOptions) ->
+        ids = @._toFilterIdList(storedValue)
+
+        return _.map(ids, (id) ->
+            option = availableFilterOptions[dataType]?[id]
+            name = option?.name or id
+
+            return {
+                id: id
+                name: name
+                dataType: dataType
+                mode: mode
+                key: "#{mode}-#{dataType}-#{id}"
+            }
+        )
+
+    _toFilterIdList: (value) ->
+        if _.isArray(value)
+            ids = _.map(value, (it) -> "#{it}".trim())
+        else if _.isString(value)
+            ids = _.map(value.split(","), (it) -> "#{it}".trim())
+        else if _.isNumber(value)
+            ids = ["#{value}"]
+        else
+            ids = []
+
+        ids = _.filter(ids, (id) -> id.length)
+        return _.uniq(ids)
+
+    _matchTagFilters: (row, filters) ->
+        return true if !filters?.length
+
+        includeIds = _.chain(filters).filter((f) -> f.mode == "include").map((f) -> "#{f.id}".toLowerCase()).value()
+        excludeIds = _.chain(filters).filter((f) -> f.mode == "exclude").map((f) -> "#{f.id}".toLowerCase()).value()
+        tagNames = _.chain(row.tags or []).map((tag) -> "#{tag?[0] or ''}".toLowerCase()).filter((name) -> name.length).value()
+
+        if includeIds.length and !_.some(includeIds, (id) -> tagNames.indexOf(id) != -1)
+            return false
+
+        if _.some(excludeIds, (id) -> tagNames.indexOf(id) != -1)
+            return false
+
+        return true
+
     _filterRowsByQuery: (rows, query) ->
         normalizedQuery = "#{query or ''}".trim().toLowerCase()
         return rows if !normalizedQuery.length
@@ -321,6 +574,12 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
             return false
         )
+
+    _typeFilterLabel: (type) ->
+        return @translate.instant("SEARCH.FILTER_EPICS") if type == "epic"
+        return @translate.instant("SEARCH.FILTER_USER_STORIES") if type == "userstory"
+        return @translate.instant("SEARCH.FILTER_TASKS") if type == "task"
+        return type
 
     _toSortableTimestamp: (dateValue) ->
         return null if !dateValue

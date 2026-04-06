@@ -19,12 +19,20 @@ div.wrapper.issues.schedule(
                 .taskboard-actions
                     .issue-table-options-start
                         button.btn-filter.e2e-open-filter(
-                            type="button"
-                            ng-click="ctrl.onFilterButtonClick()"
-                            title="{{ 'BACKLOG.FILTERS.TITLE' | translate }}"
+                            ng-click="ctrl.openFilter = !ctrl.openFilter"
+                            title="{{ctrl.selectedFilters.length}} {{'COMMON.FILTERS.APPLIED_FILTERS_NUM' | translate}}"
+                            ng-class="{active: ctrl.openFilter}"
                         )
                             tg-svg(svg-icon="icon-filters")
-                            span.text(translate="BACKLOG.FILTERS.TITLE")
+                            span.text(
+                                ng-if="!ctrl.openFilter"
+                                translate="BACKLOG.FILTERS.TITLE"
+                            )
+                            span.text(
+                                ng-if="ctrl.openFilter"
+                                translate="BACKLOG.FILTERS.HIDE_TITLE"
+                            )
+                            span.selected-filters(ng-if="ctrl.selectedFilters.length") {{ctrl.selectedFilters.length}}
 
                         tg-input-search(
                             q="ctrl.filterQ"
@@ -51,131 +59,152 @@ div.wrapper.issues.schedule(
         p(ng-if="ctrl.loading") Loading schedule...
         p(ng-if="ctrl.loadingError") Unable to load schedule data.
 
-        section.issues-table.basic-table(ng-if="!ctrl.loading && !ctrl.loadingError && ctrl.displayRows.length")
-            div.row.title
-                div.level-field(data-fieldname="type" ng-click="ctrl.cycleTypeOrder()")
-                    span.wide {{"SCHEDULE.TABLE.COLUMNS.TYPE" | translate}}
-                    div.mobile
-                        .tooltip.pop-help {{"SCHEDULE.TABLE.COLUMNS.TYPE" | translate}}
-                        span.first-letter {{"SCHEDULE.TABLE.COLUMNS.TYPE" | translate}}
-                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('type')")
-                        path(
-                            class="arrow-up"
-                            d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
-                        path(
-                            class="arrow-down"
-                            d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
-
-                div.subject(data-fieldname="subject" ng-click="ctrl.toggleSubjectOrder()")
-                    span {{"SCHEDULE.TABLE.COLUMNS.SUBJECT" | translate}}
-                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('subject')")
-                        path(
-                            class="arrow-up"
-                            d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
-                        path(
-                            class="arrow-down"
-                            d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
-
-                div.status-field(data-fieldname="status" ng-click="ctrl.toggleStatusOrder()")
-                    span {{"SCHEDULE.TABLE.COLUMNS.STATUS" | translate}}
-                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('status')")
-                        path(
-                            class="arrow-up"
-                            d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
-                        path(
-                            class="arrow-down"
-                            d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
-
-                div.issue-field(data-fieldname="estimated_start" ng-click="ctrl.toggleDateOrder('estimated_start')")
-                    span {{"SCHEDULE.TABLE.COLUMNS.ESTIMATED_START" | translate}}
-                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('estimated_start')")
-                        path(
-                            class="arrow-up"
-                            d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
-                        path(
-                            class="arrow-down"
-                            d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
-
-                div.modified-field(data-fieldname="actual_start" ng-click="ctrl.toggleDateOrder('actual_start')")
-                    span {{"SCHEDULE.TABLE.COLUMNS.ACTUAL_START" | translate}}
-                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('actual_start')")
-                        path(
-                            class="arrow-up"
-                            d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
-                        path(
-                            class="arrow-down"
-                            d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
-
-                div.assigned-field(data-fieldname="due_date" ng-click="ctrl.toggleDateOrder('due_date')")
-                    span {{"SCHEDULE.TABLE.COLUMNS.DUE_DATE" | translate}}
-                    svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('due_date')")
-                        path(
-                            class="arrow-up"
-                            d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
-                        path(
-                            class="arrow-down"
-                            d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
-
-            div.row.table-main(ng-repeat="row in ctrl.displayRows track by ctrl.rowKey(row)")
-                div.level-field
-                    span.schedule-type-tag(ng-class="'is-' + row.type") {{ row.typeLabel }}
-
-                div.subject
-                    a.schedule-item-link(
-                        ng-if="ctrl.canOpenItem(row)"
-                        href=""
-                        tg-nav="{{ctrl.itemNavKey(row)}}:project=project.slug,ref=row.item.ref"
-                        title="{{ ctrl.itemNavTitle(row) }}"
-                    )
-                        .schedule-item-content
-                            span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
-                            span.issue-subject {{ ctrl.itemTitle(row) }}
-                            span.tag(
-                                ng-if="ctrl.showTags"
-                                ng-attr-title="{{tag[0]}}"
-                                ng-repeat="tag in row.tags"
-                                ng-style="{background: tag[1]}"
-                                ng-class="{'last':$last}"
-                            ) {{tag[0]}}
-
-                    .schedule-item-content(ng-if="!ctrl.canOpenItem(row)")
-                        span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
-                        span.issue-subject {{ ctrl.itemTitle(row) }}
-                        span.tag(
-                            ng-if="ctrl.showTags"
-                            ng-attr-title="{{tag[0]}}"
-                            ng-repeat="tag in row.tags"
-                            ng-style="{background: tag[1]}"
-                            ng-class="{'last':$last}"
-                        ) {{tag[0]}}
-
-                div.status-field.schedule-status-cell(title="{{ ctrl.getStatusLabel(row) }}")
-                    span.schedule-status-value(ng-style="ctrl.getStatusStyle(row)") {{ ctrl.getStatusLabel(row) }}
-
-                div.issue-field.schedule-date-cell
-                    button.schedule-date-value(
-                        type="button"
-                        ng-click="ctrl.openDateLightbox(row, 'estimated_start')"
-                        ng-disabled="ctrl.isSaving(row, 'estimated_start')"
-                    ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'estimated_start')) }}
-
-                div.modified-field.schedule-date-cell
-                    button.schedule-date-value(
-                        type="button"
-                        ng-click="ctrl.openDateLightbox(row, 'actual_start')"
-                        ng-disabled="ctrl.isSaving(row, 'actual_start')"
-                    ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'actual_start')) }}
-
-                div.assigned-field.schedule-date-cell
-                    button.schedule-date-value(
-                        type="button"
-                        ng-click="ctrl.openDateLightbox(row, 'due_date')"
-                        ng-disabled="ctrl.isSaving(row, 'due_date')"
-                    ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'due_date')) }}
-
-        section.empty-large(ng-if="!ctrl.loading && !ctrl.loadingError && !ctrl.displayRows.length")
-            img(
-                src="#{v}/images/empty/empty_moon.png",
-                alt="No schedule items"
+        .issue-container
+            sidebar.filters-bar(
+                ng-if="ctrl.openFilter"
             )
-            p.title No items found.
+                tg-filter(
+                    q="ctrl.filterQ"
+                    filters="ctrl.filters"
+                    custom-filters="ctrl.customFilters"
+                    selected-filters="ctrl.selectedFilters"
+                    customFilters="ctl.customFilters"
+                    on-save-custom-filter="ctrl.saveCustomFilter(name)"
+                    on-add-filter="ctrl.addFilter(filter)"
+                    on-select-custom-filter="ctrl.selectCustomFilter(filter)"
+                    on-remove-custom-filter="ctrl.removeCustomFilter(filter)"
+                    on-remove-filter="ctrl.removeFilter(filter)"
+                    on-change-q="ctrl.changeQ(q)"
+                )
+
+            section.issues-page(
+                ng-class="{filter: ctrl.openFilter}"
+            )
+                section.issues-table.basic-table(ng-if="!ctrl.loading && !ctrl.loadingError && ctrl.displayRows.length")
+                    div.row.title
+                        div.level-field(data-fieldname="type" ng-click="ctrl.cycleTypeOrder()")
+                            span.wide {{"SCHEDULE.TABLE.COLUMNS.TYPE" | translate}}
+                            div.mobile
+                                .tooltip.pop-help {{"SCHEDULE.TABLE.COLUMNS.TYPE" | translate}}
+                                span.first-letter {{"SCHEDULE.TABLE.COLUMNS.TYPE" | translate}}
+                            svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('type')")
+                                path(
+                                    class="arrow-up"
+                                    d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
+                                path(
+                                    class="arrow-down"
+                                    d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
+
+                        div.subject(data-fieldname="subject" ng-click="ctrl.toggleSubjectOrder()")
+                            span {{"SCHEDULE.TABLE.COLUMNS.SUBJECT" | translate}}
+                            svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('subject')")
+                                path(
+                                    class="arrow-up"
+                                    d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
+                                path(
+                                    class="arrow-down"
+                                    d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
+
+                        div.status-field(data-fieldname="status" ng-click="ctrl.toggleStatusOrder()")
+                            span {{"SCHEDULE.TABLE.COLUMNS.STATUS" | translate}}
+                            svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('status')")
+                                path(
+                                    class="arrow-up"
+                                    d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
+                                path(
+                                    class="arrow-down"
+                                    d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
+
+                        div.issue-field(data-fieldname="estimated_start" ng-click="ctrl.toggleDateOrder('estimated_start')")
+                            span {{"SCHEDULE.TABLE.COLUMNS.ESTIMATED_START" | translate}}
+                            svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('estimated_start')")
+                                path(
+                                    class="arrow-up"
+                                    d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
+                                path(
+                                    class="arrow-down"
+                                    d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
+
+                        div.modified-field(data-fieldname="actual_start" ng-click="ctrl.toggleDateOrder('actual_start')")
+                            span {{"SCHEDULE.TABLE.COLUMNS.ACTUAL_START" | translate}}
+                            svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('actual_start')")
+                                path(
+                                    class="arrow-up"
+                                    d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
+                                path(
+                                    class="arrow-down"
+                                    d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
+
+                        div.assigned-field(data-fieldname="due_date" ng-click="ctrl.toggleDateOrder('due_date')")
+                            span {{"SCHEDULE.TABLE.COLUMNS.DUE_DATE" | translate}}
+                            svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('due_date')")
+                                path(
+                                    class="arrow-up"
+                                    d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
+                                path(
+                                    class="arrow-down"
+                                    d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
+
+                    div.row.table-main(ng-repeat="row in ctrl.displayRows track by ctrl.rowKey(row)")
+                        div.level-field
+                            span.schedule-type-tag(ng-class="'is-' + row.type") {{ row.typeLabel }}
+
+                        div.subject
+                            a.schedule-item-link(
+                                ng-if="ctrl.canOpenItem(row)"
+                                href=""
+                                tg-nav="{{ctrl.itemNavKey(row)}}:project=project.slug,ref=row.item.ref"
+                                title="{{ ctrl.itemNavTitle(row) }}"
+                            )
+                                .schedule-item-content
+                                    span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
+                                    span.issue-subject {{ ctrl.itemTitle(row) }}
+                                    span.tag(
+                                        ng-if="ctrl.showTags"
+                                        ng-attr-title="{{tag[0]}}"
+                                        ng-repeat="tag in row.tags"
+                                        ng-style="{background: tag[1]}"
+                                        ng-class="{'last':$last}"
+                                    ) {{tag[0]}}
+
+                            .schedule-item-content(ng-if="!ctrl.canOpenItem(row)")
+                                span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
+                                span.issue-subject {{ ctrl.itemTitle(row) }}
+                                span.tag(
+                                    ng-if="ctrl.showTags"
+                                    ng-attr-title="{{tag[0]}}"
+                                    ng-repeat="tag in row.tags"
+                                    ng-style="{background: tag[1]}"
+                                    ng-class="{'last':$last}"
+                                ) {{tag[0]}}
+
+                        div.status-field.schedule-status-cell(title="{{ ctrl.getStatusLabel(row) }}")
+                            span.schedule-status-value(ng-style="ctrl.getStatusStyle(row)") {{ ctrl.getStatusLabel(row) }}
+
+                        div.issue-field.schedule-date-cell
+                            button.schedule-date-value(
+                                type="button"
+                                ng-click="ctrl.openDateLightbox(row, 'estimated_start')"
+                                ng-disabled="ctrl.isSaving(row, 'estimated_start')"
+                            ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'estimated_start')) }}
+
+                        div.modified-field.schedule-date-cell
+                            button.schedule-date-value(
+                                type="button"
+                                ng-click="ctrl.openDateLightbox(row, 'actual_start')"
+                                ng-disabled="ctrl.isSaving(row, 'actual_start')"
+                            ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'actual_start')) }}
+
+                        div.assigned-field.schedule-date-cell
+                            button.schedule-date-value(
+                                type="button"
+                                ng-click="ctrl.openDateLightbox(row, 'due_date')"
+                                ng-disabled="ctrl.isSaving(row, 'due_date')"
+                            ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'due_date')) }}
+
+                section.empty-large(ng-if="!ctrl.loading && !ctrl.loadingError && !ctrl.displayRows.length")
+                    img(
+                        src="#{v}/images/empty/empty_moon.png",
+                        alt="No schedule items"
+                    )
+                    p.title No items found.
