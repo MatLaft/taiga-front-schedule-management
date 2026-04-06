@@ -3,6 +3,12 @@
         .title {
             [data-fieldname] {
                 outline: none;
+
+                &:focus,
+                &:active {
+                    box-shadow: none;
+                    outline: none;
+                }
             }
 
             .issue-field,
@@ -91,11 +97,25 @@
         cursor: pointer;
         margin: 0;
         padding: 0;
-        text-decoration: underline;
+        text-decoration: none;
 
         &:disabled {
             color: $color-gray400;
             cursor: wait;
+        }
+
+        &:focus,
+        &:active {
+            box-shadow: none;
+            outline: none;
+        }
+    }
+
+    .schedule-item-link {
+        &:focus,
+        &:active {
+            box-shadow: none;
+            outline: none;
         }
     }
 

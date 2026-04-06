@@ -346,7 +346,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         parsed = moment(dateValue)
         return dateValue if !parsed.isValid()
 
-        return parsed.format("YYYY-MM-DD")
+        return parsed.format("DD MMM YYYY")
 
     getDateValue: (row, field) ->
         return row.item[field]
