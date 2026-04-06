@@ -129,12 +129,12 @@ module.controller("ProjectProfileController", ProjectProfileController)
 ProjectProfileDirective = ($repo, $confirm, $loading, $navurls, $location, projectService, currentUserService, $analytics) ->
     link = ($scope, $el, $attrs) ->
         $ctrl = $el.controller()
-
-        form = $el.find("form").checksley({"onlyOneErrorElement": true})
+        form = null
+        submitButton = null
         submit = debounce 2000, (event) =>
             event.preventDefault()
 
-            return if not form.validate()
+            return if not form? or not form.validate()
 
             currentLoading = $loading()
                 .target(submitButton)
@@ -175,9 +175,25 @@ ProjectProfileDirective = ($repo, $confirm, $loading, $navurls, $location, proje
                 if data._error_message
                     $confirm.notify("error", data._error_message)
 
-        submitButton = $el.find(".submit-button")
+        initializeForm = =>
+            return if form?
 
-        $el.on "submit", "form", submit
+            scopeDefer $scope, =>
+                return if form?
+
+                $form = $el.find("form")
+                return if not $form.length
+
+                form = $form.checksley({"onlyOneErrorElement": true})
+                submitButton = $el.find(".submit-button")
+                $el.on "submit", "form", submit
+
+        initializeForm()
+        bindOnce $scope, "project.archived_code", initializeForm
+
+        $scope.$on "$destroy", ->
+            form?.destroy?()
+            $el.off "submit", "form", submit
 
     return {link:link}
 
