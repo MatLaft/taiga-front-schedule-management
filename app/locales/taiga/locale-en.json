@@ -1654,6 +1654,7 @@
             "COLUMNS": {
                 "TYPE": "Type",
                 "SUBJECT": "Subject",
+                "STATUS": "Status",
                 "ESTIMATED_START": "Estimated Start",
                 "ACTUAL_START": "Actual Start",
                 "DUE_DATE": "Due Date"

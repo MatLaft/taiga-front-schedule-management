@@ -6,6 +6,7 @@
             }
 
             .issue-field,
+            .status-field,
             .modified-field,
             .assigned-field {
                 justify-content: flex-end;
@@ -18,9 +19,11 @@
             text-align: right;
         }
 
+        .status-field,
         .modified-field,
         .assigned-field {
             flex-basis: 130px;
+            max-width: 130px;
             text-align: right;
         }
 
@@ -69,6 +72,16 @@
 
     .schedule-date-cell {
         text-align: right;
+    }
+
+    .schedule-status-cell {
+        @include ellipsis(100%);
+    }
+
+    .schedule-status-value {
+        @include ellipsis(100%);
+        display: inline-block;
+        max-width: 100%;
     }
 
     .schedule-date-value {

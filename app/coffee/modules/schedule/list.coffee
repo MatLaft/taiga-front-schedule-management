@@ -39,6 +39,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.sortField = null
         @.typeOrderMode = null
         @.subjectSortDirection = null
+        @.statusSortDirection = null
         @.dateSortDirections = {}
         @._typeOrderCycles = [
             ["epic", "userstory", "task"]
@@ -154,6 +155,16 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         @.updateDisplayRows()
 
+    toggleStatusOrder: ->
+        @sortField = "status"
+
+        if @statusSortDirection == null or @statusSortDirection == "desc"
+            @statusSortDirection = "asc"
+        else
+            @statusSortDirection = "desc"
+
+        @.updateDisplayRows()
+
     toggleDateOrder: (field) ->
         return if @_dateSortFields.indexOf(field) == -1
 
@@ -173,6 +184,9 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         if field == "subject"
             return @_directionToIconClass(@subjectSortDirection)
 
+        if field == "status"
+            return @_directionToIconClass(@statusSortDirection)
+
         if @_dateSortFields.indexOf(field) != -1
             return @_directionToIconClass(@dateSortDirections[field])
 
@@ -185,6 +199,10 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         if @sortField == "subject" and @subjectSortDirection?
             @displayRows = @._orderRowsBySubject(@subjectSortDirection)
+            return
+
+        if @sortField == "status" and @statusSortDirection?
+            @displayRows = @._orderRowsByStatus(@statusSortDirection)
             return
 
         if @_dateSortFields.indexOf(@sortField) != -1 and @dateSortDirections[@sortField]?
@@ -225,6 +243,23 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
                 fallbackA = @rowKey(a)
                 fallbackB = @rowKey(b)
                 comparison = fallbackA.localeCompare(fallbackB)
+
+            if isDescending then -comparison else comparison
+
+        return orderedRows
+
+    _orderRowsByStatus: (direction) ->
+        isDescending = direction == "desc"
+        orderedRows = @rows.slice(0)
+
+        orderedRows.sort (a, b) =>
+            statusA = "#{@getStatusLabel(a)}"
+            statusB = "#{@getStatusLabel(b)}"
+
+            comparison = statusA.localeCompare(statusB, undefined, {sensitivity: "base"})
+
+            if comparison == 0
+                comparison = @rowKey(a).localeCompare(@rowKey(b))
 
             if isDescending then -comparison else comparison
 
@@ -284,6 +319,23 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
     itemNavTitle: (row) ->
         return @itemTitle(row) if !row.item?.ref?
         return "##{row.item.ref} #{@itemTitle(row)}"
+
+    getStatusLabel: (row) ->
+        statusName = row.item?.status_extra_info?.name or row.item?.status?.name or row.item?.status_name
+        return statusName if statusName?
+
+        rawStatus = row.item?.status
+        return "#{rawStatus}" if _.isString(rawStatus) or _.isNumber(rawStatus)
+
+        return "-"
+
+    getStatusColor: (row) ->
+        return row.item?.status_extra_info?.color or row.item?.status?.color or null
+
+    getStatusStyle: (row) ->
+        color = @getStatusColor(row)
+        return {} if !color
+        return {"color": color}
 
     itemTitle: (row) ->
         return row.item.subject or row.item.name or "-"
