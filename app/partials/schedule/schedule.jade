@@ -111,7 +111,24 @@ div.wrapper.issues.schedule(
                     span.schedule-type-tag(ng-class="'is-' + row.type") {{ row.typeLabel }}
 
                 div.subject
-                    .schedule-item-content
+                    a.schedule-item-link(
+                        ng-if="ctrl.canOpenItem(row)"
+                        href=""
+                        tg-nav="{{ctrl.itemNavKey(row)}}:project=project.slug,ref=row.item.ref"
+                        title="{{ ctrl.itemNavTitle(row) }}"
+                    )
+                        .schedule-item-content
+                            span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
+                            span.issue-subject {{ ctrl.itemTitle(row) }}
+                            span.tag(
+                                ng-if="ctrl.showTags"
+                                ng-attr-title="{{tag[0]}}"
+                                ng-repeat="tag in row.tags"
+                                ng-style="{background: tag[1]}"
+                                ng-class="{'last':$last}"
+                            ) {{tag[0]}}
+
+                    .schedule-item-content(ng-if="!ctrl.canOpenItem(row)")
                         span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
                         span.issue-subject {{ ctrl.itemTitle(row) }}
                         span.tag(

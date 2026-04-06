@@ -272,6 +272,19 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
     rowKey: (row) ->
         return "#{row.type}-#{row.item.id}"
 
+    itemNavKey: (row) ->
+        return "project-epics-detail" if row.type == "epic"
+        return "project-userstories-detail" if row.type == "userstory"
+        return "project-tasks-detail" if row.type == "task"
+        return null
+
+    canOpenItem: (row) ->
+        return !!(@itemNavKey(row) and row.item?.ref?)
+
+    itemNavTitle: (row) ->
+        return @itemTitle(row) if !row.item?.ref?
+        return "##{row.item.ref} #{@itemTitle(row)}"
+
     itemTitle: (row) ->
         return row.item.subject or row.item.name or "-"
 
