@@ -29,9 +29,20 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         @scope.sectionName = "PROJECT.SECTION.SCHEDULE"
         @.rows = []
+        @.displayRows = []
         @.loading = false
         @.loadingError = false
         @.savingKey = null
+        @.sortField = null
+        @.typeOrderMode = null
+        @.subjectSortDirection = null
+        @.dateSortDirections = {}
+        @._typeOrderCycles = [
+            ["epic", "userstory", "task"]
+            ["userstory", "task", "epic"]
+            ["task", "epic", "userstory"]
+        ]
+        @._dateSortFields = ["estimated_start", "actual_start", "due_date"]
 
         promise = @.loadInitialData()
 
@@ -69,6 +80,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             rows = rows.concat(@._toRows(tasks, "task", "Task"))
 
             @.rows = rows
+            @.updateDisplayRows()
             @.loading = false
             return rows
         , (xhr) =>
@@ -88,6 +100,123 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
                 typeLabel: typeLabel
             }
         )
+
+    cycleTypeOrder: ->
+        @sortField = "type"
+
+        if @typeOrderMode == null
+            @typeOrderMode = 0
+        else
+            @typeOrderMode = (@typeOrderMode + 1) % @_typeOrderCycles.length
+
+        @.updateDisplayRows()
+
+    toggleSubjectOrder: ->
+        @sortField = "subject"
+
+        if @subjectSortDirection == null or @subjectSortDirection == "desc"
+            @subjectSortDirection = "asc"
+        else
+            @subjectSortDirection = "desc"
+
+        @.updateDisplayRows()
+
+    toggleDateOrder: (field) ->
+        return if @_dateSortFields.indexOf(field) == -1
+
+        @sortField = field
+
+        currentDirection = @dateSortDirections[field]
+        @dateSortDirections[field] = if currentDirection == "asc" then "desc" else "asc"
+
+        @.updateDisplayRows()
+
+    updateDisplayRows: ->
+        if @sortField == "type" and @typeOrderMode != null
+            @displayRows = @._orderRowsByType()
+            return
+
+        if @sortField == "subject" and @subjectSortDirection?
+            @displayRows = @._orderRowsBySubject(@subjectSortDirection)
+            return
+
+        if @_dateSortFields.indexOf(@sortField) != -1 and @dateSortDirections[@sortField]?
+            @displayRows = @._orderRowsByDate(@sortField, @dateSortDirections[@sortField])
+            return
+
+        @displayRows = @rows
+
+    _orderRowsByType: ->
+        orderedTypes = @_typeOrderCycles[@typeOrderMode] or @_typeOrderCycles[0]
+        groupedRows = _.groupBy(@rows, "type")
+        orderedRows = []
+        includedTypes = {}
+
+        _.each(orderedTypes, (type) ->
+            includedTypes[type] = true
+            orderedRows = orderedRows.concat(groupedRows[type] or [])
+        )
+
+        _.each(@rows, (row) ->
+            return if includedTypes[row.type]
+            orderedRows.push(row)
+        )
+
+        return orderedRows
+
+    _orderRowsBySubject: (direction) ->
+        isDescending = direction == "desc"
+        orderedRows = @rows.slice(0)
+
+        orderedRows.sort (a, b) =>
+            titleA = "#{@itemTitle(a)}"
+            titleB = "#{@itemTitle(b)}"
+
+            comparison = titleA.localeCompare(titleB, undefined, {sensitivity: "base"})
+
+            if comparison == 0
+                fallbackA = @rowKey(a)
+                fallbackB = @rowKey(b)
+                comparison = fallbackA.localeCompare(fallbackB)
+
+            if isDescending then -comparison else comparison
+
+        return orderedRows
+
+    _orderRowsByDate: (field, direction) ->
+        isDescending = direction == "desc"
+        orderedRows = @rows.slice(0)
+
+        orderedRows.sort (a, b) =>
+            timestampA = @_toSortableTimestamp(a.item[field])
+            timestampB = @_toSortableTimestamp(b.item[field])
+
+            hasA = timestampA?
+            hasB = timestampB?
+
+            if !hasA and !hasB
+                return @rowKey(a).localeCompare(@rowKey(b))
+
+            # Keep empty dates at the end for both directions.
+            return 1 if !hasA
+            return -1 if !hasB
+
+            comparison = timestampA - timestampB
+
+            if comparison == 0
+                comparison = @rowKey(a).localeCompare(@rowKey(b))
+
+            if isDescending then -comparison else comparison
+
+        return orderedRows
+
+    _toSortableTimestamp: (dateValue) ->
+        return null if !dateValue
+
+        parsed = moment(dateValue)
+        return null if !parsed.isValid()
+
+        return parsed.valueOf()
 
     rowKey: (row) ->
         return "#{row.type}-#{row.item.id}"
