@@ -1655,6 +1655,7 @@
                 "TYPE": "Type",
                 "SUBJECT": "Subject",
                 "STATUS": "Status",
+                "ASSIGNED_TO": "Assign to",
                 "ESTIMATED_START": "Estimated Start",
                 "ACTUAL_START": "Actual Start",
                 "DUE_DATE": "Due Date"

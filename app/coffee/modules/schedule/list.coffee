@@ -46,6 +46,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.subjectSortDirection = null
         @.statusSortDirection = null
         @.dateSortDirections = {}
+        @.projectMembersById = {}
         @._typeOrderCycles = [
             ["epic", "userstory", "task"]
             ["task", "userstory", "epic"]
@@ -61,6 +62,11 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         @scope.projectId = project.id
         @scope.project = project
+        @projectMembersById = {}
+        _.each(project.members or [], (member) =>
+            return if !member?.id?
+            @projectMembersById["#{member.id}"] = member
+        )
         @scope.$emit('project:loaded', project)
 
     loadInitialData: ->
@@ -625,6 +631,22 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         color = @getStatusColor(row)
         return {} if !color
         return {"color": color}
+
+    getAssignedToMember: (row) ->
+        member = row.item?.assigned_to_extra_info
+        return member if member
+
+        assignedTo = row.item?.assigned_to
+        return null if !assignedTo?
+
+        return @projectMembersById["#{assignedTo}"] or null
+
+    getAssignedToName: (row) ->
+        member = @getAssignedToMember(row)
+        if member
+            return member.full_name_display or member.full_name or member.username or @translate.instant("COMMON.ASSIGNED_TO.NOT_ASSIGNED")
+
+        return @translate.instant("COMMON.ASSIGNED_TO.NOT_ASSIGNED")
 
     itemTitle: (row) ->
         return row.item.subject or row.item.name or "-"

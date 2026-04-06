@@ -135,7 +135,7 @@ div.wrapper.issues.schedule(
                                     class="arrow-down"
                                     d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
 
-                        div.assigned-field(data-fieldname="due_date" ng-click="ctrl.toggleDateOrder('due_date')")
+                        div.due-date-field(data-fieldname="due_date" ng-click="ctrl.toggleDateOrder('due_date')")
                             span {{"SCHEDULE.TABLE.COLUMNS.DUE_DATE" | translate}}
                             svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('due_date')")
                                 path(
@@ -144,6 +144,9 @@ div.wrapper.issues.schedule(
                                 path(
                                     class="arrow-down"
                                     d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
+
+                        div.assigned-field
+                            span {{"SCHEDULE.TABLE.COLUMNS.ASSIGNED_TO" | translate}}
 
                     div.row.table-main(ng-repeat="row in ctrl.displayRows track by ctrl.rowKey(row)")
                         div.level-field
@@ -195,12 +198,20 @@ div.wrapper.issues.schedule(
                                 ng-disabled="ctrl.isSaving(row, 'actual_start')"
                             ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'actual_start')) }}
 
-                        div.assigned-field.schedule-date-cell
+                        div.due-date-field.schedule-date-cell
                             button.schedule-date-value(
                                 type="button"
                                 ng-click="ctrl.openDateLightbox(row, 'due_date')"
                                 ng-disabled="ctrl.isSaving(row, 'due_date')"
                             ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'due_date')) }}
+
+                        div.assigned-field
+                            .schedule-assignedto(title="{{ ctrl.getAssignedToName(row) }}")
+                                figure.avatar
+                                    img(
+                                        tg-avatar="ctrl.getAssignedToMember(row)"
+                                        alt="{{ ctrl.getAssignedToName(row) }}"
+                                    )
 
                 section.empty-large(ng-if="!ctrl.loading && !ctrl.loadingError && !ctrl.displayRows.length")
                     img(

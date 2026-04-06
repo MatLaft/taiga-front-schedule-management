@@ -14,8 +14,20 @@
             .issue-field,
             .status-field,
             .modified-field,
-            .assigned-field {
+            .due-date-field {
                 justify-content: flex-end;
+            }
+
+            .assigned-field {
+                align-items: center;
+                color: $color-link-tertiary;
+                display: flex;
+                justify-content: center;
+
+                &:hover {
+                    color: $color-link-tertiary;
+                    cursor: default;
+                }
             }
         }
 
@@ -27,15 +39,37 @@
 
         .status-field,
         .modified-field,
-        .assigned-field {
+        .due-date-field {
             flex-basis: 130px;
             max-width: 130px;
             text-align: right;
         }
 
-        .assigned-field {
+        .due-date-field {
             @include until($widescreen) {
                 flex-basis: 130px;
+            }
+        }
+
+        .assigned-field {
+            flex-basis: 100px;
+            max-width: 100px;
+
+            .schedule-assignedto {
+                align-items: center;
+                display: flex;
+                justify-content: center;
+            }
+
+            .avatar {
+                align-items: center;
+                display: flex;
+
+                img {
+                    border-radius: 50%;
+                    height: 32px;
+                    width: 32px;
+                }
             }
         }
     }
