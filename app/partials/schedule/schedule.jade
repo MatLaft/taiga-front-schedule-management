@@ -162,8 +162,9 @@ div.wrapper.issues.schedule(
                                 title="{{ ctrl.itemNavTitle(row) }}"
                             )
                                 .schedule-item-content
-                                    span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
-                                    span.issue-subject {{ ctrl.itemTitle(row) }}
+                                    span.issue-text
+                                        span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
+                                        span.issue-subject {{ ctrl.itemTitle(row) }}
                                     span.tag(
                                         ng-if="ctrl.showTags"
                                         ng-attr-title="{{tag[0]}}"
@@ -173,8 +174,9 @@ div.wrapper.issues.schedule(
                                     ) {{tag[0]}}
 
                             .schedule-item-content(ng-if="!ctrl.canOpenItem(row)")
-                                span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
-                                span.issue-subject {{ ctrl.itemTitle(row) }}
+                                span.issue-text
+                                    span.issue-ref(ng-if="row.item.ref") {{ "#" + row.item.ref }}
+                                    span.issue-subject {{ ctrl.itemTitle(row) }}
                                 span.tag(
                                     ng-if="ctrl.showTags"
                                     ng-attr-title="{{tag[0]}}"
