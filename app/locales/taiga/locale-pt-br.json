@@ -922,6 +922,7 @@
             "KANBAN": "Kanban",
             "ISSUES": "Problemas",
             "SCHEDULE": "Agenda",
+            "GANTT": "Gantt",
             "WIKI": "Wiki",
             "TEAM": "Time",
             "MEETUP": "Meetup",

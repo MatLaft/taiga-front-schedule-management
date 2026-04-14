@@ -241,6 +241,14 @@ configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEven
         }
     )
 
+    $routeProvider.when("/project/:pslug/gantt",
+        {
+            templateUrl: "gantt/gantt.html",
+            loader: true,
+            section: "gantt"
+        }
+    )
+
     # Milestone
     $routeProvider.when("/project/:pslug/taskboard/:sslug",
         {
@@ -1077,6 +1085,7 @@ modules = [
     "taigaUserStories",
     "taigaTasks",
     "taigaTeam",
+    "taigaGantt",
     "taigaSchedule",
     "taigaWiki",
     "taigaSearch",
