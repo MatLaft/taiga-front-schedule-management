@@ -1,0 +1,260 @@
+//- This source code is licensed under the terms of the
+//- GNU Affero General Public License found in the LICENSE file in
+//- the root directory of this source tree.
+//-
+//- Copyright (c) 2021-present Kaleidos INC
+
+doctype html
+
+tg-project-archived-warning
+div.wrapper.gantt(
+    ng-init="section='gantt'; sectionName='PROJECT.SECTION.GANTT'"
+)
+    tg-project-menu
+
+    section.main.gantt-main(role="main")
+        .gantt-top
+            include ../includes/components/mainTitle
+
+        .gantt-workspace(tg-gantt-sync-rows tg-gantt-panel-resize)
+            aside.gantt-left-panel(tg-gantt-column-resize)
+                .gantt-table-month-spacer
+                .gantt-table-header
+                    span.gantt-col-title.gantt-col-header
+                        span.gantt-col-header-text Item
+                        button.gantt-col-resizer(
+                            type="button"
+                            data-gantt-resize="item"
+                            aria-label="Resize item column"
+                        )
+                    span.gantt-col-assignee.gantt-col-header
+                        span.gantt-col-header-text Assignee
+                        button.gantt-col-resizer(
+                            type="button"
+                            data-gantt-resize="assignee"
+                            aria-label="Resize assignee column"
+                        )
+                    span.gantt-col-eh.gantt-col-header
+                        span.gantt-col-header-text EH
+                        button.gantt-col-resizer(
+                            type="button"
+                            data-gantt-resize="eh"
+                            aria-label="Resize EH column"
+                        )
+                    span.gantt-col-start.gantt-col-header
+                        span.gantt-col-header-text Start
+                        button.gantt-col-resizer(
+                            type="button"
+                            data-gantt-resize="start"
+                            aria-label="Resize start column"
+                        )
+                    span.gantt-col-due.gantt-col-header
+                        span.gantt-col-header-text Due
+                        button.gantt-col-resizer(
+                            type="button"
+                            data-gantt-resize="due"
+                            aria-label="Resize due column"
+                        )
+                    span.gantt-col-progress.gantt-col-header
+                        span.gantt-col-header-text %
+                .gantt-tree
+                    .gantt-tree-node.gantt-node-epic
+                        input.gantt-node-trigger(type="checkbox" id="gantt-epic-1" checked="checked")
+                        label.gantt-tree-row.gantt-row.gantt-row-epic(for="gantt-epic-1" data-gantt-row-id="epic-1")
+                            span.gantt-col-title(title="Epic: Platform Migration")
+                                span.gantt-row-content
+                                    span.gantt-row-toggle
+                                        tg-svg.gantt-chevron(svg-icon="icon-arrow-down")
+                                    span.gantt-row-label Epic: Platform Migration
+                            span.gantt-col-assignee Maria
+                            span.gantt-col-eh 58h
+                            span.gantt-col-start 02 Apr
+                            span.gantt-col-due 28 Apr
+                            span.gantt-col-progress
+                                span.gantt-progress-chip 35%
+                        .gantt-tree-children
+                            .gantt-tree-node.gantt-node-story
+                                input.gantt-node-trigger(type="checkbox" id="gantt-story-1-1" checked="checked")
+                                label.gantt-tree-row.gantt-row.gantt-row-story(for="gantt-story-1-1" data-gantt-row-id="story-1-1")
+                                    span.gantt-col-title(title="Story: Account settings redesign")
+                                        span.gantt-row-content
+                                            span.gantt-row-toggle
+                                                tg-svg.gantt-chevron(svg-icon="icon-arrow-down")
+                                            span.gantt-row-label Story: Account settings redesign
+                                    span.gantt-col-assignee Julia
+                                    span.gantt-col-eh 16h
+                                    span.gantt-col-start 08 Apr
+                                    span.gantt-col-due 14 Apr
+                                    span.gantt-col-progress
+                                        span.gantt-progress-chip 55%
+                                .gantt-tree-children
+                                    .gantt-tree-row.gantt-row.gantt-row-task(data-gantt-row-id="task-1-1-1")
+                                        span.gantt-col-title(title="Task: Create wireframes")
+                                            span.gantt-row-content
+                                                span.gantt-row-bullet •
+                                                span.gantt-row-label Task: Create wireframes
+                                        span.gantt-col-assignee Ana
+                                        span.gantt-col-eh 6h
+                                        span.gantt-col-start 08 Apr
+                                        span.gantt-col-due 09 Apr
+                                        span.gantt-col-progress
+                                            span.gantt-progress-chip 100%
+                                    .gantt-tree-row.gantt-row.gantt-row-task(data-gantt-row-id="task-1-1-2")
+                                        span.gantt-col-title(title="Task: API contract review")
+                                            span.gantt-row-content
+                                                span.gantt-row-bullet •
+                                                span.gantt-row-label Task: API contract review
+                                        span.gantt-col-assignee Rafael
+                                        span.gantt-col-eh 4h
+                                        span.gantt-col-start 09 Apr
+                                        span.gantt-col-due 10 Apr
+                                        span.gantt-col-progress
+                                            span.gantt-progress-chip 75%
+                            .gantt-tree-node.gantt-node-story
+                                input.gantt-node-trigger(type="checkbox" id="gantt-story-1-2" checked="checked")
+                                label.gantt-tree-row.gantt-row.gantt-row-story(for="gantt-story-1-2" data-gantt-row-id="story-1-2")
+                                    span.gantt-col-title(title="Story: Notification preferences")
+                                        span.gantt-row-content
+                                            span.gantt-row-toggle
+                                                tg-svg.gantt-chevron(svg-icon="icon-arrow-down")
+                                            span.gantt-row-label Story: Notification preferences
+                                    span.gantt-col-assignee Pedro
+                                    span.gantt-col-eh 12h
+                                    span.gantt-col-start 10 Apr
+                                    span.gantt-col-due 18 Apr
+                                    span.gantt-col-progress
+                                        span.gantt-progress-chip 30%
+                                .gantt-tree-children
+                                    .gantt-tree-row.gantt-row.gantt-row-task(data-gantt-row-id="task-1-2-1")
+                                        span.gantt-col-title(title="Task: QA smoke tests")
+                                            span.gantt-row-content
+                                                span.gantt-row-bullet •
+                                                span.gantt-row-label Task: QA smoke tests
+                                        span.gantt-col-assignee Maria
+                                        span.gantt-col-eh 5h
+                                        span.gantt-col-start 11 Apr
+                                        span.gantt-col-due 12 Apr
+                                        span.gantt-col-progress
+                                            span.gantt-progress-chip 40%
+                                    .gantt-tree-row.gantt-row.gantt-row-task(data-gantt-row-id="task-1-2-2")
+                                        span.gantt-col-title(title="Task: Copy review")
+                                            span.gantt-row-content
+                                                span.gantt-row-bullet •
+                                                span.gantt-row-label Task: Copy review
+                                        span.gantt-col-assignee Pedro
+                                        span.gantt-col-eh 3h
+                                        span.gantt-col-start 12 Apr
+                                        span.gantt-col-due 13 Apr
+                                        span.gantt-col-progress
+                                            span.gantt-progress-chip 0%
+
+                    .gantt-tree-node.gantt-node-epic
+                        input.gantt-node-trigger(type="checkbox" id="gantt-epic-2" checked="checked")
+                        label.gantt-tree-row.gantt-row.gantt-row-epic(for="gantt-epic-2" data-gantt-row-id="epic-2")
+                            span.gantt-col-title(title="Epic: New Billing Flow")
+                                span.gantt-row-content
+                                    span.gantt-row-toggle
+                                        tg-svg.gantt-chevron(svg-icon="icon-arrow-down")
+                                    span.gantt-row-label Epic: New Billing Flow
+                            span.gantt-col-assignee Rafael
+                            span.gantt-col-eh 41h
+                            span.gantt-col-start 05 Apr
+                            span.gantt-col-due 26 Apr
+                            span.gantt-col-progress
+                                span.gantt-progress-chip 20%
+                        .gantt-tree-children
+                            .gantt-tree-node.gantt-node-story
+                                input.gantt-node-trigger(type="checkbox" id="gantt-story-2-1" checked="checked")
+                                label.gantt-tree-row.gantt-row.gantt-row-story(for="gantt-story-2-1" data-gantt-row-id="story-2-1")
+                                    span.gantt-col-title(title="Story: Team permissions cleanup")
+                                        span.gantt-row-content
+                                            span.gantt-row-toggle
+                                                tg-svg.gantt-chevron(svg-icon="icon-arrow-down")
+                                            span.gantt-row-label Story: Team permissions cleanup
+                                    span.gantt-col-assignee Lucas
+                                    span.gantt-col-eh 14h
+                                    span.gantt-col-start 12 Apr
+                                    span.gantt-col-due 20 Apr
+                                    span.gantt-col-progress
+                                        span.gantt-progress-chip 25%
+                                .gantt-tree-children
+                                    .gantt-tree-row.gantt-row.gantt-row-task(data-gantt-row-id="task-2-1-1")
+                                        span.gantt-col-title(title="Task: Accessibility pass")
+                                            span.gantt-row-content
+                                                span.gantt-row-bullet •
+                                                span.gantt-row-label Task: Accessibility pass
+                                        span.gantt-col-assignee Julia
+                                        span.gantt-col-eh 8h
+                                        span.gantt-col-start 14 Apr
+                                        span.gantt-col-due 16 Apr
+                                        span.gantt-col-progress
+                                            span.gantt-progress-chip 0%
+
+            .gantt-panel-resizer(
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize gantt panels"
+                tabindex="0"
+            )
+
+            section.gantt-right-panel
+                - var timelineMonths = [{label: "Apr 2026", days: 30}, {label: "May 2026", days: 31}]
+                - var totalDays = timelineMonths.reduce(function(sum, month) { return sum + month.days; }, 0)
+                - var dayWidthRem = 2.2
+                - var timelineWidth = (totalDays * dayWidthRem) + "rem"
+                - var rowCount = 10
+                - var ganttBars = [{type: "epic", shape: "arrow", label: "Epic: Platform Migration", rowId: "epic-1", row: 0, start: 1, end: 28}, {type: "story", shape: "arrow", label: "Story: Account settings redesign", rowId: "story-1-1", row: 1, start: 8, end: 14}, {type: "task", shape: "rounded", label: "Task: Create wireframes", rowId: "task-1-1-1", row: 2, start: 8, end: 9}, {type: "task", shape: "rounded", label: "Task: API contract review", rowId: "task-1-1-2", row: 3, start: 9, end: 10}, {type: "story", shape: "arrow", label: "Story: Notification preferences", rowId: "story-1-2", row: 4, start: 10, end: 18}, {type: "task", shape: "rounded", label: "Task: QA smoke tests", rowId: "task-1-2-1", row: 5, start: 11, end: 12}, {type: "task", shape: "rounded", label: "Task: Copy review", rowId: "task-1-2-2", row: 6, start: 12, end: 13}, {type: "epic", shape: "arrow", label: "Epic: New Billing Flow", rowId: "epic-2", row: 7, start: 5, end: 26}, {type: "story", shape: "arrow", label: "Story: Team permissions cleanup", rowId: "story-2-1", row: 8, start: 12, end: 20}, {type: "task", shape: "rounded", label: "Task: Accessibility pass", rowId: "task-2-1-1", row: 9, start: 14, end: 16}]
+                - var ganttArrowPath = function(startDay, endDay, rowIndex) { var left = Math.max(0, startDay - 1); var right = Math.min(totalDays, endDay); var top = rowIndex + 0.22; var bottom = rowIndex + 0.58; var tip = rowIndex + 0.74; var inset = 0.28; return "M" + left + "," + top + "L" + right + "," + top + "L" + right + "," + bottom + "L" + right + "," + tip + "L" + (right - inset) + "," + bottom + "L" + (left + inset) + "," + bottom + "L" + left + "," + tip + "L" + left + "," + bottom + "z"; }
+                - var ganttStoryPath = function(startDay, endDay, rowIndex) { var left = Math.max(0, startDay - 1); var right = Math.min(totalDays, endDay); var top = rowIndex + 0.22; var bottom = rowIndex + 0.58; var mid = (top + bottom) / 2; var span = Math.max(right - left, 0.5); var notch = Math.min(0.28, span / 4); return "M" + left + "," + top + "L" + right + "," + top + "L" + (right - notch) + "," + mid + "L" + right + "," + bottom + "L" + left + "," + bottom + "L" + (left + notch) + "," + mid + "z"; }
+
+                .gantt-timeline
+                    .gantt-timeline-months
+                        each month in timelineMonths
+                            - var monthWidth = (month.days * dayWidthRem) + "rem"
+                            .gantt-month(style="width:" + monthWidth) #{month.label}
+
+                    - var dayColumns = "repeat(" + totalDays + ", " + dayWidthRem + "rem)"
+                    .gantt-timeline-days(style="grid-template-columns:" + dayColumns)
+                        each month in timelineMonths
+                            - var monthDays = Array.apply(null, Array(month.days))
+                            each _, index in monthDays
+                                .gantt-day #{index + 1}
+
+                    .gantt-timeline-grid(style="width:" + timelineWidth)
+                        .gantt-bars-layer
+                            svg.gantt-bars-svg(
+                                style="width:" + timelineWidth + ";height:100%"
+                                viewBox="0 0 #{totalDays} #{rowCount}"
+                                data-total-days=totalDays
+                                preserveAspectRatio="none"
+                            )
+                                each bar in ganttBars
+                                    if bar.shape == "rounded"
+                                        rect.gantt-bar(
+                                            class="gantt-bar-#{bar.type}"
+                                            data-gantt-row-id=bar.rowId
+                                            data-bar-type=bar.type
+                                            data-shape=bar.shape
+                                            data-start-day=bar.start
+                                            data-end-day=bar.end
+                                            x=bar.start - 1
+                                            y=bar.row + 0.28
+                                            width=bar.end - bar.start + 1
+                                            height=0.32
+                                            rx=0.16
+                                            ry=0.16
+                                        )
+                                            title= bar.label
+                                    else
+                                        - var barPath = bar.type == "story" ? ganttStoryPath(bar.start, bar.end, bar.row) : ganttArrowPath(bar.start, bar.end, bar.row)
+                                        path.gantt-bar(
+                                            class="gantt-bar-#{bar.type}"
+                                            data-gantt-row-id=bar.rowId
+                                            data-bar-type=bar.type
+                                            data-shape=bar.shape
+                                            data-start-day=bar.start
+                                            data-end-day=bar.end
+                                            shape-rendering="crispEdges"
+                                            d=barPath
+                                        )
+                                            title= bar.label
