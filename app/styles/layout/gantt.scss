@@ -165,14 +165,17 @@
 
     .gantt-row-epic {
         --gantt-row-bg: #{$color-gray100};
-        cursor: pointer;
         font-weight: 600;
     }
 
     .gantt-row-story {
         --gantt-row-bg: #{rgba($color-gray100, .55)};
-        cursor: pointer;
         font-weight: 500;
+    }
+
+    .gantt-row-epic.is-collapsible,
+    .gantt-row-story.is-collapsible {
+        cursor: pointer;
     }
 
     .gantt-row-task {
@@ -197,6 +200,7 @@
         align-items: center;
         color: $color-link-tertiary;
         display: inline-flex;
+        flex: 0 0 1rem;
         justify-content: center;
         width: 1rem;
     }
@@ -287,6 +291,11 @@
 
     .gantt-row-task .gantt-row-content {
         padding-inline-start: 2rem;
+    }
+
+    .gantt-row-story-root .gantt-row-content,
+    .gantt-row-task-root .gantt-row-content {
+        padding-inline-start: 0;
     }
 
     .gantt-col-title,
