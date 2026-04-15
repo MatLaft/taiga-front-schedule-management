@@ -145,6 +145,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             row.dueLabel = @_formatDateShort(dueMoment)
 
             @_refreshComputedData()
+            @confirm.notify("success")
             return
         , =>
             row.item.revert()
@@ -944,7 +945,7 @@ GanttBarResizeDirective = ($document) ->
         INDICATOR_FRAME_WIDTH = 10
         INDICATOR_ARROW_WIDTH = 6
         INDICATOR_WIDTH = INDICATOR_FRAME_WIDTH + INDICATOR_ARROW_WIDTH
-        INDICATOR_GAP_PX = -
+        INDICATOR_GAP_PX = 1
         INDICATOR_PAD_Y_PX = 4
         hoveredBar = null
         hoveredEdge = null
@@ -1129,7 +1130,18 @@ GanttBarResizeDirective = ($document) ->
             ctrl = $scope.ctrl
             return if !ctrl?.saveBarDateRange?
 
-            ctrl.saveBarDateRange(finishedDrag.rowId, finishedDrag.startDay, finishedDrag.endDay)
+            ctrl.saveBarDateRange(finishedDrag.rowId, finishedDrag.startDay, finishedDrag.endDay).then null, =>
+                return if !finishedDrag?.bar?
+                finishedDrag.bar.setAttribute("data-start-day", finishedDrag.initialStartDay)
+                finishedDrag.bar.setAttribute("data-end-day", finishedDrag.initialEndDay)
+                renderBarGeometry(
+                    finishedDrag.bar,
+                    finishedDrag.initialStartDay,
+                    finishedDrag.initialEndDay,
+                    finishedDrag.rowIndex,
+                    finishedDrag.totalDays
+                )
+                return
 
         onDragMouseMove = (event) ->
             return if !active?
