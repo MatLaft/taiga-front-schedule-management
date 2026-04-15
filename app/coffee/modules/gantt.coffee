@@ -485,17 +485,35 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             days: [{
                 key: now.format("YYYY-MM-DD")
                 label: now.date()
+                isToday: true
             }]
             totalDays: 1
             rowCount: 1
             timelineWidthRem: widthRem
+            todayLineStyle: @_buildTodayLineStyle(now.clone(), now.clone())
             dayColumnsStyle: {"grid-template-columns": "repeat(1, #{widthRem}rem)"}
             gridStyle: {width: "#{widthRem}rem"}
             svgStyle: {width: "#{widthRem}rem", height: "100%"}
         }
 
+    _buildTodayLineStyle: (startMoment, endMoment) ->
+        return null if !startMoment? or !endMoment?
+
+        today = moment().startOf("day")
+        return null if today.isBefore(startMoment, "day")
+        return null if today.isAfter(endMoment, "day")
+
+        dayOffset = today.diff(startMoment, "days")
+        leftRem = dayOffset * @dayWidthRem
+
+        return {
+            left: "#{leftRem}rem"
+            width: "#{@dayWidthRem}rem"
+        }
+
     _buildTimeline: (rows) ->
         allDates = []
+        today = moment().startOf("day")
 
         _.each(rows or [], (row) ->
             return if row.isPlaceholder
@@ -544,6 +562,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             days.push({
                 key: dayCursor.format("YYYY-MM-DD")
                 label: dayCursor.date()
+                isToday: dayCursor.isSame(today, "day")
             })
 
             dayCursor.add(1, "day")
@@ -560,6 +579,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             totalDays: totalDays
             rowCount: rowCount
             timelineWidthRem: timelineWidthRem
+            todayLineStyle: @_buildTodayLineStyle(start, end)
             dayColumnsStyle: {"grid-template-columns": "repeat(#{totalDays}, #{@dayWidthRem}rem)"}
             gridStyle: {width: "#{timelineWidthRem}rem"}
             svgStyle: {width: "#{timelineWidthRem}rem", height: "100%"}
@@ -648,6 +668,69 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
 module.controller("GanttController", GanttController)
 
+GANTT_LAYOUT_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
+
+getGanttCookieProjectId = ($scope) ->
+    projectId = $scope?.projectId or $scope?.project?.id
+    return "global" if !projectId?
+    return "#{projectId}"
+
+buildGanttCookieName = (key, $scope) ->
+    projectId = getGanttCookieProjectId($scope)
+    return "taiga_gantt_#{key}_#{projectId}"
+
+readGanttCookie = (name) ->
+    return null if typeof document == "undefined" or !name?
+
+    rawCookies = document.cookie or ""
+    cookiePairs = rawCookies.split(";")
+
+    for rawPair in cookiePairs
+        pair = rawPair.trim()
+        continue if !pair.length
+
+        separatorIndex = pair.indexOf("=")
+        continue if separatorIndex == -1
+
+        cookieName = pair.substring(0, separatorIndex)
+        continue if cookieName != name
+
+        cookieValue = pair.substring(separatorIndex + 1)
+
+        try
+            return decodeURIComponent(cookieValue)
+        catch error
+            return cookieValue
+
+    return null
+
+writeGanttCookie = (name, value) ->
+    return if typeof document == "undefined" or !name?
+
+    encodedValue = encodeURIComponent("#{value or ''}")
+    document.cookie = "#{name}=#{encodedValue}; max-age=#{GANTT_LAYOUT_COOKIE_MAX_AGE}; path=/; SameSite=Lax"
+    return
+
+readGanttJsonCookie = (name) ->
+    rawValue = readGanttCookie(name)
+    return null if !rawValue?
+
+    try
+        return JSON.parse(rawValue)
+    catch error
+        return null
+
+writeGanttJsonCookie = (name, value) ->
+    return if !value?
+
+    try
+        serialized = JSON.stringify(value)
+    catch error
+        return
+
+    writeGanttCookie(name, serialized)
+    return
+
 GanttColumnResizeDirective = ($document) ->
     link = ($scope, $el) ->
         root = $el[0]
@@ -664,8 +747,14 @@ GanttColumnResizeDirective = ($document) ->
         }
 
         active = null
+        cookieName = buildGanttCookieName("layout_columns", $scope)
 
         getColumnVar = (key) -> "--gantt-col-#{key}"
+
+        getHeaderCellByKey = (key) ->
+            handle = header.querySelector(".gantt-col-resizer[data-gantt-resize=\"#{key}\"]")
+            return null if !handle?
+            return handle.closest(".gantt-col-header")
 
         updateTableWidth = ->
             headerCells = Array.from(header.querySelectorAll(".gantt-col-header"))
@@ -680,6 +769,40 @@ GanttColumnResizeDirective = ($document) ->
             tableWidth = Math.ceil(cellsWidth + (columnGap * Math.max(headerCells.length - 1, 0)) + paddingLeft + paddingRight)
             root.style.setProperty("--gantt-table-width", "#{tableWidth}px")
 
+        persistColumnWidths = ->
+            widths = {}
+
+            _.each(_.keys(minWidths), (key) ->
+                headerCell = getHeaderCellByKey(key)
+                return if !headerCell?
+
+                width = Math.round(headerCell.getBoundingClientRect().width)
+                return if !isFinite(width) or width <= 0
+
+                widths[key] = width
+            )
+
+            return if _.isEmpty(widths)
+            writeGanttJsonCookie(cookieName, widths)
+
+        applyPersistedColumnWidths = ->
+            persisted = readGanttJsonCookie(cookieName)
+            return if !persisted? or !_.isObject(persisted)
+
+            hasApplied = false
+
+            _.each(_.keys(minWidths), (key) ->
+                rawWidth = parseFloat(persisted[key])
+                return if isNaN(rawWidth)
+
+                minWidth = minWidths[key] or 80
+                nextWidth = Math.max(minWidth, Math.round(rawWidth))
+                root.style.setProperty(getColumnVar(key), "#{nextWidth}px")
+                hasApplied = true
+            )
+
+            updateTableWidth() if hasApplied
+
         onMouseMove = (event) ->
             return if !active?
 
@@ -693,6 +816,7 @@ GanttColumnResizeDirective = ($document) ->
         stopDrag = ->
             return if !active?
 
+            persistColumnWidths()
             active = null
             root.classList.remove("is-resizing-columns")
             $document.off("mousemove", onMouseMove)
@@ -721,7 +845,9 @@ GanttColumnResizeDirective = ($document) ->
         handles.forEach (handle) ->
             angular.element(handle).on("mousedown", startDrag)
 
-        $scope.$evalAsync(updateTableWidth)
+        $scope.$evalAsync ->
+            applyPersistedColumnWidths()
+            updateTableWidth()
 
         $scope.$on "$destroy", ->
             handles.forEach (handle) ->
@@ -742,12 +868,13 @@ GanttPanelResizeDirective = ($document) ->
         return if !leftPanel? or !rightPanel? or !handle?
 
         active = null
+        cookieName = buildGanttCookieName("layout_panel_width", $scope)
 
         getMinWidth = (node) ->
             minWidth = parseFloat(window.getComputedStyle(node).minWidth or "")
             if isNaN(minWidth) then 0 else minWidth
 
-        setLeftWidth = (requestedWidth) ->
+        setLeftWidth = (requestedWidth, persist = false) ->
             workspaceRect = workspace.getBoundingClientRect()
             handleWidth = handle.getBoundingClientRect().width or 0
             workspaceWidth = workspaceRect.width or 0
@@ -761,7 +888,9 @@ GanttPanelResizeDirective = ($document) ->
             bounded = Math.max(minAllowed, Math.min(maxLeft, requestedWidth))
             return if !isFinite(bounded)
 
-            workspace.style.setProperty("--gantt-left-panel-width", "#{Math.round(bounded)}px")
+            rounded = Math.round(bounded)
+            workspace.style.setProperty("--gantt-left-panel-width", "#{rounded}px")
+            writeGanttCookie(cookieName, rounded) if persist
 
         onMouseMove = (event) ->
             return if !active?
@@ -774,6 +903,7 @@ GanttPanelResizeDirective = ($document) ->
         stopDrag = ->
             return if !active?
 
+            setLeftWidth(leftPanel.getBoundingClientRect().width, true)
             active = null
             workspace.classList.remove("is-resizing-panels")
             $document.off("mousemove", onMouseMove)
@@ -800,14 +930,19 @@ GanttPanelResizeDirective = ($document) ->
             step = if event.shiftKey then 32 else 16
             currentWidth = leftPanel.getBoundingClientRect().width
             delta = if leftKey then -step else step
-            setLeftWidth(currentWidth + delta)
+            setLeftWidth(currentWidth + delta, true)
 
         handleEl = angular.element(handle)
         handleEl.on("mousedown", startDrag)
         handleEl.on("keydown", onKeydown)
 
         $scope.$evalAsync ->
-            setLeftWidth(leftPanel.getBoundingClientRect().width)
+            persistedWidth = parseFloat(readGanttCookie(cookieName) or "")
+
+            if !isNaN(persistedWidth)
+                setLeftWidth(persistedWidth, true)
+            else
+                setLeftWidth(leftPanel.getBoundingClientRect().width, true)
 
         $scope.$on "$destroy", ->
             handleEl.off("mousedown", startDrag)
@@ -822,7 +957,70 @@ GanttSyncRowsDirective = ->
     link = ($scope, $el) ->
         root = $el[0]
         leftPanel = root.querySelector(".gantt-left-panel")
+        rightPanel = root.querySelector(".gantt-right-panel")
         return if !leftPanel?
+
+        isSyncingScroll = false
+
+        syncVerticalScroll = (source, target) ->
+            return if !source? or !target?
+            return if isSyncingScroll
+            return if source.scrollTop == target.scrollTop
+
+            isSyncingScroll = true
+            target.scrollTop = source.scrollTop
+            isSyncingScroll = false
+
+        onLeftScroll = ->
+            syncVerticalScroll(leftPanel, rightPanel)
+
+        onRightScroll = ->
+            syncVerticalScroll(rightPanel, leftPanel)
+
+        updateRightPanelOverflow = (visibleRows = []) ->
+            return if !rightPanel?
+
+            monthsHeader = rightPanel.querySelector(".gantt-timeline-months")
+            daysHeader = rightPanel.querySelector(".gantt-timeline-days")
+
+            monthsHeaderHeight = monthsHeader?.getBoundingClientRect().height or 0
+            daysHeaderHeight = daysHeader?.getBoundingClientRect().height or 0
+            availableRowsHeight = Math.max(0, (rightPanel.clientHeight or 0) - monthsHeaderHeight - daysHeaderHeight)
+
+            rowHeight = 0
+            if visibleRows.length
+                rowHeight = visibleRows[0].getBoundingClientRect().height or 0
+
+            if rowHeight <= 0
+                sampleRow = leftPanel.querySelector(".gantt-tree-row")
+                rowHeight = sampleRow?.getBoundingClientRect().height or 0
+
+            requiredRowsHeight = visibleRows.length * rowHeight
+            hasVerticalOverflow = requiredRowsHeight > (availableRowsHeight + 1)
+
+            rightPanel.classList.toggle("has-vertical-scroll", hasVerticalOverflow)
+
+            if !hasVerticalOverflow
+                rightPanel.scrollTop = 0
+                leftPanel.scrollTop = 0
+
+        onLeftWheel = (event) ->
+            return if !rightPanel?
+
+            deltaY = event.deltaY or 0
+            deltaX = event.deltaX or 0
+            return if deltaY == 0 and deltaX == 0
+
+            # Keep a single vertical scrollbar (right panel),
+            # but let horizontal scrolling remain local on the left panel.
+            isHorizontalIntent = Math.abs(deltaX) > Math.abs(deltaY)
+            return if isHorizontalIntent
+            return if !rightPanel.classList.contains("has-vertical-scroll")
+
+            nextTop = rightPanel.scrollTop + deltaY
+            rightPanel.scrollTop = nextTop if deltaY != 0
+            syncVerticalScroll(rightPanel, leftPanel)
+            event.preventDefault()
 
         getBarsData = ->
             barsSvg = root.querySelector(".gantt-bars-svg")
@@ -918,6 +1116,7 @@ GanttSyncRowsDirective = ->
 
             visibleRowsCount = Math.max(visibleRows.length, 1)
             root.style.setProperty("--gantt-visible-rows", "#{visibleRowsCount}")
+            updateRightPanelOverflow(visibleRows)
 
         onChange = (event) ->
             target = event.target
@@ -926,22 +1125,29 @@ GanttSyncRowsDirective = ->
 
         observer = null
         scheduleUpdate = _.debounce(updateVisibleRows, 10)
+        onWindowResize = _.debounce(updateVisibleRows, 25)
 
         if window.MutationObserver?
             observer = new MutationObserver ->
                 scheduleUpdate()
 
             observer.observe(leftPanel, {childList: true, subtree: true})
-
-            rightPanel = root.querySelector(".gantt-right-panel")
             if rightPanel?
                 observer.observe(rightPanel, {childList: true, subtree: true})
 
+        leftPanel.addEventListener("scroll", onLeftScroll)
+        leftPanel.addEventListener("wheel", onLeftWheel)
+        rightPanel.addEventListener("scroll", onRightScroll) if rightPanel?
         leftPanel.addEventListener("change", onChange)
+        window.addEventListener("resize", onWindowResize)
         $scope.$evalAsync(updateVisibleRows)
 
         $scope.$on "$destroy", ->
+            leftPanel.removeEventListener("scroll", onLeftScroll)
+            leftPanel.removeEventListener("wheel", onLeftWheel)
+            rightPanel.removeEventListener("scroll", onRightScroll) if rightPanel?
             leftPanel.removeEventListener("change", onChange)
+            window.removeEventListener("resize", onWindowResize)
             observer.disconnect() if observer?
 
     return {link: link}

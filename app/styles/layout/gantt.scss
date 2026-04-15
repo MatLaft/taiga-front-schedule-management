@@ -26,18 +26,25 @@
         display: flex;
         flex-direction: column;
         gap: 1rem;
+        height: $main-height;
+        max-height: 100%;
         overflow: hidden;
         padding: 1.5rem;
+    }
+
+    .gantt-top {
+        flex: 0 0 auto;
     }
 
     .gantt-workspace {
         --gantt-visible-rows: 1;
         align-items: stretch;
         display: flex;
+        flex: 1 1 auto;
         flex-wrap: nowrap;
         gap: 0;
-        min-height: calc(100vh - 13rem);
-        overflow-x: auto;
+        min-height: 0;
+        overflow: hidden;
     }
 
     .gantt-left-panel {
@@ -46,8 +53,10 @@
         border-inline-end: 0;
         border-radius: 4px 0 0 4px;
         flex: 0 0 var(--gantt-left-panel-width);
+        height: 100%;
         min-width: 0;
-        overflow: auto;
+        overflow-x: auto;
+        overflow-y: hidden;
         width: var(--gantt-left-panel-width);
     }
 
@@ -351,9 +360,15 @@
         border-inline-start: 0;
         border-radius: 0 4px 4px 0;
         flex: 1;
+        height: 100%;
         min-width: 0;
-        overflow: auto;
+        overflow-x: auto;
+        overflow-y: hidden;
         position: relative;
+
+        &.has-vertical-scroll {
+            overflow-y: auto;
+        }
     }
 
     .is-resizing-panels,
@@ -365,6 +380,7 @@
     .gantt-timeline {
         min-height: 100%;
         min-width: 100%;
+        position: relative;
         width: max-content;
     }
 
@@ -407,6 +423,22 @@
         min-height: var(--gantt-head-height);
         padding-top: 0;
         text-align: center;
+
+        &.is-today {
+            background: rgba($color-link-primary, .14);
+        }
+    }
+
+    .gantt-today-line {
+        background: rgba($color-link-primary, .14);
+        clip-path: inset(0 1px 0 0);
+        height: calc(var(--gantt-head-height) + (var(--gantt-visible-rows) * var(--gantt-row-height)));
+        left: 0;
+        pointer-events: none;
+        position: absolute;
+        top: var(--gantt-head-height);
+        width: 1px;
+        z-index: 1;
     }
 
     .gantt-timeline-grid {
@@ -432,6 +464,7 @@
         height: calc(var(--gantt-visible-rows) * var(--gantt-row-height));
         min-height: calc(var(--gantt-visible-rows) * var(--gantt-row-height));
         position: relative;
+        right: 1px;
     }
 
     .gantt-bars-layer {

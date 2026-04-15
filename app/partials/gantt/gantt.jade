@@ -208,7 +208,13 @@ div.wrapper.gantt(
                     )
                         .gantt-day(
                             ng-repeat="day in ctrl.timeline.days track by day.key"
+                            ng-class="{'is-today': day.isToday}"
                         ) {{ day.label }}
+
+                    .gantt-today-line(
+                        ng-if="ctrl.timeline.todayLineStyle"
+                        ng-style="ctrl.timeline.todayLineStyle"
+                    )
 
                     .gantt-timeline-grid(
                         ng-style="ctrl.timeline.gridStyle"
