@@ -1102,6 +1102,28 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         @editingEstimatedHoursKey = @rowKey(row)
         row.estimatedHoursInput = @_estimatedHoursInputFromItem(row.item)
+        @_focusEstimatedHoursInput(row)
+        return
+
+    _focusEstimatedHoursInput: (row, attempts = 0) ->
+        return if typeof document == "undefined"
+        return if !row?
+
+        rowKey = @rowKey(row)
+        @scope.$evalAsync =>
+            input = document.querySelector(".schedule-hours-input[data-row-key=\"#{rowKey}\"]")
+            if !input?
+                if attempts < 5
+                    setTimeout((=> @_focusEstimatedHoursInput(row, attempts + 1)), 0)
+                return
+
+            input.focus()
+            valueLength = "#{input.value or ''}".length
+            if valueLength and input.setSelectionRange?
+                input.setSelectionRange(0, valueLength)
+            input.select?()
+            return
+
         return
 
     cancelEstimatedHoursEdit: (row, $event) ->

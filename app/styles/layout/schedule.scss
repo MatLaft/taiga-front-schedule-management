@@ -258,19 +258,19 @@
 
     .schedule-hours-input {
         background: $color-white;
-        border: 1px solid transparent;
+        border: 2px solid $color-gray400;
         border-radius: 2px;
         color: $color-link-primary;
         max-width: 100%;
         min-height: 1.75rem;
         padding: .2rem .35rem;
         text-align: right;
+        transition: border .2s linear;
         width: 4.5rem;
 
         &:focus,
         &:active {
-            border-color: $color-gray300;
-            box-shadow: none;
+            border-color: rgb(0, 138, 168);
             outline: none;
         }
 

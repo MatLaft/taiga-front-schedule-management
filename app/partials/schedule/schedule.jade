@@ -233,7 +233,10 @@ div.wrapper.issues.schedule(
                                     type="text"
                                     inputmode="decimal"
                                     placeholder="?"
+                                    tg-autofocus
+                                    ng-attr-data-row-key="{{ctrl.rowKey(row)}}"
                                     ng-model="row.estimatedHoursInput"
+                                    ng-focus="$event.target.select()"
                                     ng-keydown="ctrl.onEstimatedHoursKeydown($event, row)"
                                     ng-disabled="ctrl.isSaving(row, 'estimated_hours') || !ctrl.canEditDate(row)"
                                     ng-class="{'is-saving': ctrl.isSaving(row, 'estimated_hours'), 'is-readonly': !ctrl.canEditDate(row)}"
