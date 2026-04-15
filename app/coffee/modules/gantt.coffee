@@ -35,6 +35,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @ganttBars = []
         @timeline = @_emptyTimeline()
         @membersById = {}
+        @rowNodesById = {}
+        @savingRows = {}
 
         promise = @loadInitialData()
         promise.then null, @onInitialDataError.bind(@)
@@ -85,14 +87,71 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     buildGanttData: (epics, userstories, tasks) ->
         @tree = @_buildTree(epics, userstories, tasks)
+        @_refreshComputedData()
 
+    _refreshComputedData: ->
         _.each(@tree, (node) =>
             @_computeNodeProgress(node)
         )
 
         flatRows = @_flattenRows(@tree)
+        @rowNodesById = {}
+        _.each(flatRows, (row) =>
+            @rowNodesById[row.rowId] = row
+        )
         @timeline = @_buildTimeline(flatRows)
         @ganttBars = @_buildBars(flatRows, @timeline)
+
+    _normalizeDateForInput: (dateValue) ->
+        return null if !dateValue
+
+        parsed = moment(dateValue)
+        return dateValue if !parsed.isValid()
+
+        return parsed.format("YYYY-MM-DD")
+
+    _getStartEditableField: (item) ->
+        return "actual_start" if item?.actual_start?
+        return "estimated_start"
+
+    saveBarDateRange: (rowId, startDay, endDay) ->
+        row = @rowNodesById[rowId]
+        return @q.when() if !row?.item?
+
+        normalizedStartDay = Math.max(1, parseInt(startDay, 10) or 1)
+        normalizedEndDay = Math.max(normalizedStartDay, parseInt(endDay, 10) or normalizedStartDay)
+
+        startMoment = @timeline.start.clone().add(normalizedStartDay - 1, "days").startOf("day")
+        dueMoment = @timeline.start.clone().add(normalizedEndDay - 1, "days").startOf("day")
+
+        startField = @_getStartEditableField(row.item)
+        nextStartValue = startMoment.format("YYYY-MM-DD")
+        nextDueValue = dueMoment.format("YYYY-MM-DD")
+        currentStartValue = @_normalizeDateForInput(row.item[startField])
+        currentDueValue = @_normalizeDateForInput(row.item.due_date)
+
+        return @q.when() if currentStartValue == nextStartValue and currentDueValue == nextDueValue
+
+        row.item.setAttr(startField, nextStartValue)
+        row.item.setAttr("due_date", nextDueValue)
+        @savingRows[rowId] = true
+
+        return @repo.save(row.item, true, {include_schedule: true}).then =>
+            delete @savingRows[rowId]
+
+            row.startMoment = startMoment
+            row.dueMoment = dueMoment
+            row.startLabel = @_formatDateShort(startMoment)
+            row.dueLabel = @_formatDateShort(dueMoment)
+
+            @_refreshComputedData()
+            return
+        , =>
+            row.item.revert()
+            delete @savingRows[rowId]
+            @confirm.notify("error")
+            @_refreshComputedData()
+            return @q.reject()
 
     _buildTree: (epics, userstories, tasks) ->
         epicNodes = _.map(@_sortById(epics), (epic) => @_buildNode("epic", epic))
@@ -254,7 +313,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     _extractStartMoment: (item) ->
         return null if !item?
 
-        fields = ["actual_start", "estimated_start", "due_date"]
+        fields = ["actual_start", "estimated_start"]
 
         for field in fields
             parsed = @_parseDate(item[field])
@@ -263,9 +322,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return null
 
     _extractDueMoment: (item, startMoment) ->
-        return startMoment.clone() if item? and !item.due_date and startMoment?
+        return null if !item?
 
-        fields = ["due_date", "actual_start", "estimated_start"]
+        fields = ["due_date"]
 
         for field in fields
             parsed = @_parseDate(item?[field])
@@ -276,11 +335,10 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
             return parsed
 
-        return startMoment.clone() if startMoment?
         return null
 
     _formatDateShort: (dateMoment) ->
-        return "?" if !dateMoment?
+        return "-" if !dateMoment?
         return dateMoment.format("DD MMM")
 
     _getAssignedToName: (item) ->
@@ -439,7 +497,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             end = date.clone() if date.isAfter(end)
         )
 
-        start.startOf("month")
+        start = start.clone().subtract(1, "day").startOf("day")
         end.endOf("month")
 
         months = []
@@ -500,16 +558,10 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         _.each(rows or [], (row) =>
             return if row.isPlaceholder
+            return if !row.startMoment? or !row.dueMoment?
 
-            barStartMoment = row.startMoment or row.dueMoment
-            barEndMoment = row.dueMoment or row.startMoment
-            return if !barStartMoment? and !barEndMoment?
-
-            barStartMoment = barStartMoment.clone() if barStartMoment?
-            barEndMoment = barEndMoment.clone() if barEndMoment?
-
-            barStartMoment = barEndMoment.clone() if !barStartMoment? and barEndMoment?
-            barEndMoment = barStartMoment.clone() if !barEndMoment? and barStartMoment?
+            barStartMoment = row.startMoment.clone()
+            barEndMoment = row.dueMoment.clone()
 
             if barEndMoment.isBefore(barStartMoment)
                 barEndMoment = barStartMoment.clone()
@@ -811,12 +863,14 @@ GanttSyncRowsDirective = ->
 
                 if rowIndex == undefined
                     bar.classList.add("is-hidden")
+                    bar.removeAttribute("data-row-index")
                     return
 
                 startDay = parseFloat(bar.getAttribute("data-start-day") or "1") or 1
                 endDay = parseFloat(bar.getAttribute("data-end-day") or startDay) or startDay
                 shape = bar.getAttribute("data-shape") or "arrow"
                 barType = bar.getAttribute("data-bar-type") or ""
+                bar.setAttribute("data-row-index", rowIndex)
 
                 if shape == "rounded"
                     rounded = buildRoundedRect(startDay, endDay, rowIndex, totalDays)
@@ -875,3 +929,319 @@ GanttSyncRowsDirective = ->
     return {link: link}
 
 module.directive("tgGanttSyncRows", [GanttSyncRowsDirective])
+
+GanttBarResizeDirective = ($document) ->
+    link = ($scope, $el) ->
+        root = $el[0]
+        leftPanel = root.querySelector(".gantt-left-panel")
+        rightPanel = root.querySelector(".gantt-right-panel")
+        return if !leftPanel? or !rightPanel?
+
+        active = null
+        DRAG_CLASS = "is-resizing-gantt-bar"
+        HOVER_CLASS = "is-hovering-gantt-edge"
+        SVG_NS = "http://www.w3.org/2000/svg"
+        INDICATOR_FRAME_WIDTH = 10
+        INDICATOR_ARROW_WIDTH = 6
+        INDICATOR_WIDTH = INDICATOR_FRAME_WIDTH + INDICATOR_ARROW_WIDTH
+        INDICATOR_GAP_PX = -
+        INDICATOR_PAD_Y_PX = 4
+        hoveredBar = null
+        hoveredEdge = null
+        edgeIndicator = document.createElementNS(SVG_NS, "svg")
+        edgeIndicator.setAttribute("class", "gantt-edge-indicator")
+        edgeIndicatorLine = document.createElementNS(SVG_NS, "path")
+        edgeIndicatorLine.classList.add("gantt-edge-indicator-line")
+        edgeIndicatorArrow = document.createElementNS(SVG_NS, "path")
+        edgeIndicatorArrow.classList.add("gantt-edge-indicator-arrow")
+        edgeIndicator.appendChild(edgeIndicatorLine)
+        edgeIndicator.appendChild(edgeIndicatorArrow)
+        rightPanel.appendChild(edgeIndicator)
+
+        getSvgForBar = (bar) ->
+            node = bar
+            while node?
+                return node if node.tagName?.toLowerCase?() == "svg"
+                node = node.parentNode
+            return null
+
+        buildEpicPath = (startDay, endDay, rowIndex, totalDays) ->
+            left = Math.max(0, startDay - 1)
+            right = Math.min(totalDays, endDay)
+            top = rowIndex + 0.22
+            bottom = rowIndex + 0.58
+            tip = rowIndex + 0.74
+            inset = 0.28
+            "M#{left},#{top}L#{right},#{top}L#{right},#{bottom}L#{right},#{tip}L#{right - inset},#{bottom}L#{left + inset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
+
+        buildStoryPath = (startDay, endDay, rowIndex, totalDays) ->
+            left = Math.max(0, startDay - 1)
+            right = Math.min(totalDays, endDay)
+            top = rowIndex + 0.22
+            bottom = rowIndex + 0.58
+            mid = (top + bottom) / 2
+            span = Math.max(right - left, 0.5)
+            notch = Math.min(0.28, span / 4)
+            "M#{left},#{top}L#{right},#{top}L#{right - notch},#{mid}L#{right},#{bottom}L#{left},#{bottom}L#{left + notch},#{mid}z"
+
+        buildRoundedRect = (startDay, endDay, rowIndex, totalDays) ->
+            left = Math.max(0, startDay - 1)
+            right = Math.min(totalDays, endDay)
+            width = Math.max(right - left, .35)
+            {
+                x: left
+                y: rowIndex + 0.28
+                width: width
+                height: 0.50
+                rx: 0.16
+                ry: 0.16
+            }
+
+        getVisibleRowIndex = (rowId) ->
+            rows = Array.from(leftPanel.querySelectorAll(".gantt-tree-row"))
+            visibleRows = rows.filter((row) -> row.offsetParent?)
+            index = _.findIndex(visibleRows, (row) ->
+                row.getAttribute("data-gantt-row-id") == rowId
+            )
+            if index < 0 then 0 else index
+
+        renderBarGeometry = (bar, startDay, endDay, rowIndex, totalDays) ->
+            shape = bar.getAttribute("data-shape") or "arrow"
+            barType = bar.getAttribute("data-bar-type") or ""
+
+            if shape == "rounded"
+                rounded = buildRoundedRect(startDay, endDay, rowIndex, totalDays)
+                bar.setAttribute("x", rounded.x)
+                bar.setAttribute("y", rounded.y)
+                bar.setAttribute("width", rounded.width)
+                bar.setAttribute("height", rounded.height)
+                bar.setAttribute("rx", rounded.rx)
+                bar.setAttribute("ry", rounded.ry)
+            else
+                path = if barType == "story" then buildStoryPath(startDay, endDay, rowIndex, totalDays) else buildEpicPath(startDay, endDay, rowIndex, totalDays)
+                bar.setAttribute("d", path)
+
+        getNearestBarElement = (target) ->
+            node = target
+            while node? and node != rightPanel
+                return node if node.classList?.contains("gantt-bar")
+                node = node.parentNode
+            return null
+
+        resolveResizeEdge = (bar, event) ->
+            rect = bar.getBoundingClientRect()
+            return null if rect.width <= 0
+
+            handleZonePx = Math.min(14, Math.max(8, rect.width * 0.22))
+            return "start" if event.clientX - rect.left <= handleZonePx
+            return "end" if rect.right - event.clientX <= handleZonePx
+            return null
+
+        clearHover = ->
+            if hoveredBar?
+                hoveredBar.classList.remove("is-resize-edge")
+                hoveredBar.classList.remove("is-resize-start")
+                hoveredBar.classList.remove("is-resize-end")
+
+            hoveredBar = null
+            hoveredEdge = null
+            rightPanel.classList.remove(HOVER_CLASS)
+            edgeIndicator.classList.remove("is-visible")
+            edgeIndicator.classList.remove("is-start")
+            edgeIndicator.classList.remove("is-end")
+
+        buildIndicatorLinePath = (height, edge) ->
+            top = 1
+            bottom = Math.max(top + 2, height - 1)
+            mid = (top + bottom) / 2
+            baseX = if edge == "start" then INDICATOR_FRAME_WIDTH else 1
+            segments = ["M#{baseX},#{top}L#{baseX},#{bottom}"]
+            connectorX = if edge == "start" then baseX - 3 else baseX + 3
+            segments.push("M#{baseX},#{mid}L#{connectorX},#{mid}")
+            segments.join("")
+
+        buildIndicatorArrowPath = (height, edge) ->
+            top = 1
+            bottom = Math.max(top + 2, height - 1)
+            mid = (top + bottom) / 2
+            arrowHalfHeight = 3
+            if edge == "start"
+                tipX = .5
+                baseX = 4.5
+                return "M#{tipX},#{mid}L#{baseX},#{mid - arrowHalfHeight}L#{baseX},#{mid + arrowHalfHeight}z"
+
+            tipX = INDICATOR_WIDTH - .5
+            baseX = INDICATOR_WIDTH - 4.5
+            "M#{tipX},#{mid}L#{baseX},#{mid - arrowHalfHeight}L#{baseX},#{mid + arrowHalfHeight}z"
+
+        positionEdgeIndicator = (bar, edge) ->
+            panelRect = rightPanel.getBoundingClientRect()
+            barRect = bar.getBoundingClientRect()
+            indicatorHeight = Math.max(10, Math.round(barRect.height + (INDICATOR_PAD_Y_PX * 2)))
+            x = if edge == "start"
+                (barRect.left - panelRect.left) - INDICATOR_GAP_PX - INDICATOR_WIDTH
+            else
+                (barRect.right - panelRect.left) + INDICATOR_GAP_PX
+            y = barRect.top - panelRect.top
+            x += rightPanel.scrollLeft
+            y += rightPanel.scrollTop
+
+            edgeIndicator.style.left = "#{Math.round(x)}px"
+            edgeIndicator.style.top = "#{Math.round(y - INDICATOR_PAD_Y_PX)}px"
+            edgeIndicator.style.width = "#{INDICATOR_WIDTH}px"
+            edgeIndicator.style.height = "#{indicatorHeight}px"
+            edgeIndicator.setAttribute("width", INDICATOR_WIDTH)
+            edgeIndicator.setAttribute("height", indicatorHeight)
+            edgeIndicator.setAttribute("viewBox", "0 0 #{INDICATOR_WIDTH} #{indicatorHeight}")
+            edgeIndicatorLine.setAttribute("d", buildIndicatorLinePath(indicatorHeight, edge))
+            edgeIndicatorArrow.setAttribute("d", buildIndicatorArrowPath(indicatorHeight, edge))
+            edgeIndicator.classList.remove("is-start")
+            edgeIndicator.classList.remove("is-end")
+            edgeIndicator.classList.add(if edge == "start" then "is-start" else "is-end")
+            edgeIndicator.classList.add("is-visible")
+
+        setHover = (bar, edge) ->
+            return if hoveredBar == bar and hoveredEdge == edge
+
+            clearHover()
+            return if !bar? or !edge?
+
+            hoveredBar = bar
+            hoveredEdge = edge
+            hoveredBar.classList.add("is-resize-edge")
+            hoveredBar.classList.add(if edge == "start" then "is-resize-start" else "is-resize-end")
+            rightPanel.classList.add(HOVER_CLASS)
+            positionEdgeIndicator(bar, edge)
+
+        stopDrag = ->
+            return if !active?
+
+            finishedDrag = active
+            active = null
+            root.classList.remove(DRAG_CLASS)
+            finishedDrag.bar?.classList?.remove("is-dragging")
+            $document.off("mousemove", onDragMouseMove)
+            $document.off("mouseup", stopDrag)
+
+            changed = finishedDrag.startDay != finishedDrag.initialStartDay or finishedDrag.endDay != finishedDrag.initialEndDay
+            return if !changed
+
+            ctrl = $scope.ctrl
+            return if !ctrl?.saveBarDateRange?
+
+            ctrl.saveBarDateRange(finishedDrag.rowId, finishedDrag.startDay, finishedDrag.endDay)
+
+        onDragMouseMove = (event) ->
+            return if !active?
+
+            deltaDays = Math.round((event.clientX - active.startX) / active.dayWidthPx)
+            nextStartDay = active.initialStartDay
+            nextEndDay = active.initialEndDay
+
+            if active.edge == "start"
+                nextStartDay = Math.max(1, Math.min(active.initialEndDay, active.initialStartDay + deltaDays))
+            else
+                nextEndDay = Math.min(active.totalDays, Math.max(active.initialStartDay, active.initialEndDay + deltaDays))
+
+            return if nextStartDay == active.startDay and nextEndDay == active.endDay
+
+            active.startDay = nextStartDay
+            active.endDay = nextEndDay
+
+            active.bar.setAttribute("data-start-day", active.startDay)
+            active.bar.setAttribute("data-end-day", active.endDay)
+            renderBarGeometry(active.bar, active.startDay, active.endDay, active.rowIndex, active.totalDays)
+
+        startDrag = (bar, edge, event) ->
+            return if !bar?
+            svg = getSvgForBar(bar)
+            return if !svg?
+
+            totalDays = parseFloat(svg.getAttribute("data-total-days") or "0") or 0
+            totalDays = Math.max(1, totalDays)
+
+            svgRect = svg.getBoundingClientRect()
+            return if svgRect.width <= 0
+
+            dayWidthPx = svgRect.width / totalDays
+            return if !isFinite(dayWidthPx) or dayWidthPx <= 0
+
+            rowId = bar.getAttribute("data-gantt-row-id")
+            return if !rowId?
+
+            ctrl = $scope.ctrl
+            return if ctrl?.savingRows?[rowId]
+
+            initialStartDay = parseInt(bar.getAttribute("data-start-day") or "1", 10)
+            initialEndDay = parseInt(bar.getAttribute("data-end-day") or "#{initialStartDay}", 10)
+            initialStartDay = Math.max(1, initialStartDay)
+            initialEndDay = Math.max(initialStartDay, initialEndDay)
+
+            storedRowIndex = parseInt(bar.getAttribute("data-row-index") or "", 10)
+            rowIndex = if !isNaN(storedRowIndex) then storedRowIndex else getVisibleRowIndex(rowId)
+
+            active = {
+                bar: bar
+                edge: edge
+                rowId: rowId
+                startX: event.clientX
+                dayWidthPx: dayWidthPx
+                totalDays: totalDays
+                rowIndex: rowIndex
+                initialStartDay: initialStartDay
+                initialEndDay: initialEndDay
+                startDay: initialStartDay
+                endDay: initialEndDay
+            }
+
+            clearHover()
+            root.classList.add(DRAG_CLASS)
+            bar.classList.add("is-dragging")
+            $document.on("mousemove", onDragMouseMove)
+            $document.on("mouseup", stopDrag)
+
+        onHoverMouseMove = (event) ->
+            return if active?
+
+            bar = getNearestBarElement(event.target)
+
+            if !bar? or bar.classList.contains("is-hidden")
+                clearHover()
+                return
+
+            edge = resolveResizeEdge(bar, event)
+            setHover(bar, edge)
+
+        onMouseDown = (event) ->
+            return if event.button? and event.button != 0
+            return if active?
+
+            bar = getNearestBarElement(event.target)
+            return if !bar? or bar.classList.contains("is-hidden")
+
+            edge = resolveResizeEdge(bar, event)
+            return if !edge?
+
+            event.preventDefault()
+            event.stopPropagation()
+            startDrag(bar, edge, event)
+
+        onMouseLeave = ->
+            return if active?
+            clearHover()
+
+        rightPanel.addEventListener("mousemove", onHoverMouseMove)
+        rightPanel.addEventListener("mousedown", onMouseDown)
+        rightPanel.addEventListener("mouseleave", onMouseLeave)
+
+        $scope.$on "$destroy", ->
+            rightPanel.removeEventListener("mousemove", onHoverMouseMove)
+            rightPanel.removeEventListener("mousedown", onMouseDown)
+            rightPanel.removeEventListener("mouseleave", onMouseLeave)
+            clearHover()
+            edgeIndicator.remove()
+            stopDrag()
+
+    return {link: link}
+
+module.directive("tgGanttBarResize", ["$document", GanttBarResizeDirective])

@@ -353,6 +353,7 @@
         flex: 1;
         min-width: 0;
         overflow: auto;
+        position: relative;
     }
 
     .is-resizing-panels,
@@ -436,7 +437,7 @@
     .gantt-bars-layer {
         height: 100%;
         inset: 0;
-        pointer-events: none;
+        pointer-events: auto;
         position: absolute;
         width: 100%;
         z-index: 1;
@@ -450,6 +451,8 @@
 
     .gantt-bar {
         opacity: .95;
+        pointer-events: auto;
+        transition: opacity .12s ease, stroke .12s ease, stroke-width .12s ease;
     }
 
     .gantt-bar.is-hidden {
@@ -466,6 +469,55 @@
 
     .gantt-bar-task {
         fill: rgba($color-link-primary, .75);
+    }
+
+    .gantt-bar.is-resize-edge {
+        stroke: none;
+        stroke-width: 0;
+    }
+
+    .gantt-bar.is-resize-start {
+        cursor: ew-resize;
+    }
+
+    .gantt-bar.is-resize-end {
+        cursor: ew-resize;
+    }
+
+    .gantt-edge-indicator {
+        opacity: 0;
+        overflow: visible;
+        pointer-events: none;
+        position: absolute;
+        transition: opacity .1s ease;
+        z-index: 3;
+    }
+
+    .gantt-edge-indicator-line {
+        fill: none;
+        stroke: rgba($color-link-primary, .95);
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1;
+        vector-effect: non-scaling-stroke;
+    }
+
+    .gantt-edge-indicator-arrow {
+        fill: rgba($color-link-primary, .95);
+    }
+
+    .gantt-edge-indicator.is-visible {
+        opacity: 1;
+    }
+
+    .gantt-bar.is-dragging {
+        opacity: .45;
+    }
+
+    .is-resizing-gantt-bar,
+    .is-resizing-gantt-bar * {
+        cursor: ew-resize;
+        user-select: none;
     }
 
 }

@@ -20,7 +20,7 @@ div.wrapper.gantt(
         p(ng-if="ctrl.loading") Loading gantt...
         p(ng-if="ctrl.loadingError") Unable to load gantt data.
 
-        .gantt-workspace(tg-gantt-sync-rows tg-gantt-panel-resize ng-if="!ctrl.loading && !ctrl.loadingError")
+        .gantt-workspace(tg-gantt-sync-rows tg-gantt-panel-resize tg-gantt-bar-resize ng-if="!ctrl.loading && !ctrl.loadingError")
             aside.gantt-left-panel(tg-gantt-column-resize)
                 .gantt-table-month-spacer
                 .gantt-table-header
