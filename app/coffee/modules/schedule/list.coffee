@@ -34,6 +34,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.loading = false
         @.loadingError = false
         @.savingKey = null
+        @.editingEstimatedHoursKey = null
         @.openFilter = false
         @.filterQ = ""
         @.showTags = true
@@ -73,6 +74,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.typeOrderMode = null
         @.subjectSortDirection = null
         @.statusSortDirection = null
+        @.estimatedHoursSortDirection = null
         @.dateSortDirections = {}
         @.projectMembersById = {}
         @._typeOrderCycles = [
@@ -144,6 +146,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
                 type: type
                 typeLabel: typeLabel
                 tags: @._normalizeTags(item.tags)
+                estimatedHoursInput: @_estimatedHoursInputFromItem(item)
             }
         )
 
@@ -291,6 +294,16 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         @.updateDisplayRows()
 
+    toggleEstimatedHoursOrder: ->
+        @sortField = "estimated_hours"
+
+        if @estimatedHoursSortDirection == null or @estimatedHoursSortDirection == "desc"
+            @estimatedHoursSortDirection = "asc"
+        else
+            @estimatedHoursSortDirection = "desc"
+
+        @.updateDisplayRows()
+
     toggleDateOrder: (field) ->
         return if @_dateSortFields.indexOf(field) == -1
 
@@ -312,6 +325,9 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         if field == "status"
             return @_directionToIconClass(@statusSortDirection)
+
+        if field == "estimated_hours"
+            return @_directionToIconClass(@estimatedHoursSortDirection)
 
         if @_dateSortFields.indexOf(field) != -1
             return @_directionToIconClass(@dateSortDirections[field])
@@ -466,6 +482,10 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             @displayRows = @._orderRowsByStatus(@statusSortDirection, filteredRows)
             return
 
+        if @sortField == "estimated_hours" and @estimatedHoursSortDirection?
+            @displayRows = @._orderRowsByEstimatedHours(@estimatedHoursSortDirection, filteredRows)
+            return
+
         if @_dateSortFields.indexOf(@sortField) != -1 and @dateSortDirections[@sortField]?
             @displayRows = @._orderRowsByDate(@sortField, @dateSortDirections[@sortField], filteredRows)
             return
@@ -530,6 +550,32 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             statusB = "#{@getStatusLabel(b)}"
 
             comparison = statusA.localeCompare(statusB, undefined, {sensitivity: "base"})
+
+            if comparison == 0
+                comparison = @rowKey(a).localeCompare(@rowKey(b))
+
+            if isDescending then -comparison else comparison
+
+        return orderedRows
+
+    _orderRowsByEstimatedHours: (direction, sourceRows = @rows) ->
+        isDescending = direction == "desc"
+        orderedRows = sourceRows.slice(0)
+
+        orderedRows.sort (a, b) =>
+            hoursA = @_extractEstimatedHoursValue(a.item)
+            hoursB = @_extractEstimatedHoursValue(b.item)
+
+            hasA = hoursA?
+            hasB = hoursB?
+
+            if !hasA and !hasB
+                return @rowKey(a).localeCompare(@rowKey(b))
+
+            return 1 if !hasA
+            return -1 if !hasB
+
+            comparison = hoursA - hoursB
 
             if comparison == 0
                 comparison = @rowKey(a).localeCompare(@rowKey(b))
@@ -958,6 +1004,171 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
     rowKey: (row) ->
         return "#{row.type}-#{row.item.id}"
 
+    _editPermissionByRowType: (type) ->
+        return "modify_epic" if type == "epic"
+        return "modify_us" if type == "userstory"
+        return "modify_task" if type == "task"
+        return null
+
+    canEditDate: (row) ->
+        project = @scope.project
+        return false if !row?.item? or !project?
+        return false if project.archived_code
+
+        permission = @_editPermissionByRowType(row.type)
+        return false if !permission?
+
+        return (project.my_permissions or []).indexOf(permission) != -1
+
+    _hasItemField: (item, field) ->
+        return false if !item? or !field?
+        return true if _.has(item, field)
+        attrs = item.getAttrs?()
+        return _.has(attrs, field)
+
+    _getEstimatedHoursField: (item) ->
+        candidates = ["estimated_hours", "total_hours", "total_estimated_hours", "hours"]
+        for field in candidates
+            return field if @_hasItemField(item, field)
+
+        return "estimated_hours"
+
+    _normalizeEstimatedHours: (value) ->
+        return null if value == null or value == undefined
+
+        if _.isNumber(value)
+            return if isNaN(value) then null else Math.max(0, value)
+
+        normalized = "#{value}".trim()
+        return null if !normalized.length
+
+        normalized = normalized.replace(",", ".").replace(/[^0-9.-]/g, "")
+        return null if !normalized.length
+
+        parsed = parseFloat(normalized)
+        return null if isNaN(parsed)
+        return Math.max(0, parsed)
+
+    _extractEstimatedHoursValue: (item) ->
+        return null if !item?
+
+        candidates = [
+            item.estimated_hours
+            item.total_hours
+            item.total_estimated_hours
+            item.hours
+        ]
+
+        for candidate in candidates
+            normalized = @_normalizeEstimatedHours(candidate)
+            return normalized if normalized?
+
+        return null
+
+    _estimatedHoursInputFromValue: (value) ->
+        normalized = @_normalizeEstimatedHours(value)
+        return "" if !normalized?
+
+        if Math.round(normalized) == normalized
+            return "#{Math.round(normalized)}"
+
+        return "#{Math.round(normalized * 100) / 100}"
+
+    _estimatedHoursInputFromItem: (item) ->
+        return "" if !item?
+
+        field = @_getEstimatedHoursField(item)
+        value = @_normalizeEstimatedHours(item[field])
+        value = @_extractEstimatedHoursValue(item) if !value?
+        return @_estimatedHoursInputFromValue(value)
+
+    estimatedHoursLabel: (row) ->
+        hours = @_extractEstimatedHoursValue(row?.item)
+        return "?" if !hours?
+
+        normalized = if Math.round(hours) == hours then Math.round(hours) else Math.round(hours * 100) / 100
+        return "#{normalized}h"
+
+    isEditingEstimatedHours: (row) ->
+        return false if !row?
+        return @editingEstimatedHoursKey == @rowKey(row)
+
+    startEstimatedHoursEdit: (row, $event) ->
+        $event?.preventDefault()
+        $event?.stopPropagation()
+
+        return if !row? or !@canEditDate(row)
+        return if @isSaving(row, "estimated_hours")
+
+        @editingEstimatedHoursKey = @rowKey(row)
+        row.estimatedHoursInput = @_estimatedHoursInputFromItem(row.item)
+        return
+
+    cancelEstimatedHoursEdit: (row, $event) ->
+        $event?.preventDefault()
+        $event?.stopPropagation()
+
+        return if !row?
+
+        row.estimatedHoursInput = @_estimatedHoursInputFromItem(row.item)
+
+        if @isEditingEstimatedHours(row)
+            @editingEstimatedHoursKey = null
+
+        return
+
+    confirmEstimatedHoursEdit: (row, $event) ->
+        $event?.preventDefault()
+        $event?.stopPropagation()
+
+        return @q.reject() if !row? or !@isEditingEstimatedHours(row)
+
+        return @saveEstimatedHours(row).then =>
+            @editingEstimatedHoursKey = null
+            return
+
+    onEstimatedHoursKeydown: ($event, row) ->
+        return if !$event?
+        isEnter = $event.key == "Enter" or $event.keyCode == 13
+        isEscape = $event.key == "Escape" or $event.keyCode == 27
+        return if !isEnter and !isEscape
+
+        $event.preventDefault()
+        if isEscape
+            @cancelEstimatedHoursEdit(row)
+            return
+
+        @confirmEstimatedHoursEdit(row)
+
+    saveEstimatedHours: (row) ->
+        return @q.reject() if !@canEditDate(row)
+        return @q.when() if @isSaving(row, "estimated_hours")
+        return @q.reject() if !row?.item?
+
+        field = @_getEstimatedHoursField(row.item)
+        normalizedOriginal = @_normalizeEstimatedHours(row.item[field])
+        normalizedOriginal = @_extractEstimatedHoursValue(row.item) if !normalizedOriginal?
+        normalizedNew = @_normalizeEstimatedHours(row.estimatedHoursInput)
+
+        if normalizedOriginal == normalizedNew
+            row.estimatedHoursInput = @_estimatedHoursInputFromValue(normalizedOriginal)
+            return @q.when()
+
+        row.item.setAttr(field, normalizedNew)
+        @savingKey = "#{@rowKey(row)}-estimated_hours"
+
+        return @repo.save(row.item, true, {include_schedule: true}).then =>
+            @savingKey = null
+            row.estimatedHoursInput = @_estimatedHoursInputFromItem(row.item)
+            @confirm.notify("success")
+            return
+        , =>
+            row.item.revert()
+            @savingKey = null
+            row.estimatedHoursInput = @_estimatedHoursInputFromItem(row.item)
+            @confirm.notify("error")
+            return @q.reject()
+
     itemNavKey: (row) ->
         return "project-epics-detail" if row.type == "epic"
         return "project-userstories-detail" if row.type == "userstory"
@@ -1071,6 +1282,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @savingKey == "#{@rowKey(row)}-#{field}"
 
     openDateLightbox: (row, field) ->
+        return if !@canEditDate(row)
         return if @isSaving(row, field)
         isDueDateField = field == "due_date"
         fieldLabel = field.replace(/_/g, " ")
@@ -1095,6 +1307,8 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         )
 
     saveFieldDate: (row, field, newDateValue) ->
+        return @q.reject() if !@canEditDate(row)
+
         normalizedOriginal = @._normalizeDateForInput(row.item[field])
         normalizedNew = @._normalizeDateForInput(newDateValue)
 

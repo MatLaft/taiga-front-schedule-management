@@ -1667,6 +1667,7 @@
                 "TYPE": "Type",
                 "SUBJECT": "Subject",
                 "STATUS": "Status",
+                "ESTIMATED_HOURS": "Estimated Hours",
                 "ASSIGNED_TO": "Assign to",
                 "ESTIMATED_START": "Estimated Start",
                 "ACTUAL_START": "Actual Start",

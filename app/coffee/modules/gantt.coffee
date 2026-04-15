@@ -114,9 +114,24 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return "actual_start" if item?.actual_start?
         return "estimated_start"
 
+    _permissionForType: (type) ->
+        return "modify_epic" if type == "epic"
+        return "modify_us" if type == "story"
+        return "modify_task" if type == "task"
+        return null
+
+    _canModifyType: (type) ->
+        return false if @scope.project?.archived_code
+
+        permission = @_permissionForType(type)
+        return false if !permission?
+
+        permissions = @scope.project?.my_permissions or []
+        return permissions.indexOf(permission) != -1
+
     saveBarDateRange: (rowId, startDay, endDay) ->
         row = @rowNodesById[rowId]
-        return @q.when() if !row?.item?
+        return @q.reject() if !row?.item? or !row.canEdit
 
         normalizedStartDay = Math.max(1, parseInt(startDay, 10) or 1)
         normalizedEndDay = Math.max(normalizedStartDay, parseInt(endDay, 10) or normalizedStartDay)
@@ -216,6 +231,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             dueLabel: @_formatDateShort(dueMoment)
             progressValue: progressValue
             progressLabel: "#{progressValue}%"
+            canEdit: @_canModifyType(type)
             children: []
             isPlaceholder: false
         }
@@ -583,6 +599,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 startDay: startDay
                 endDay: endDay
                 label: row.label
+                canEdit: !!row.canEdit
             }
 
             if shape == "rounded"
@@ -1038,6 +1055,10 @@ GanttBarResizeDirective = ($document) ->
             return "end" if rect.right - event.clientX <= handleZonePx
             return null
 
+        isBarEditable = (bar) ->
+            return false if !bar?
+            return bar.getAttribute("data-can-edit") == "true"
+
         clearHover = ->
             if hoveredBar?
                 hoveredBar.classList.remove("is-resize-edge")
@@ -1221,6 +1242,10 @@ GanttBarResizeDirective = ($document) ->
                 clearHover()
                 return
 
+            if !isBarEditable(bar)
+                clearHover()
+                return
+
             edge = resolveResizeEdge(bar, event)
             setHover(bar, edge)
 
@@ -1230,6 +1255,7 @@ GanttBarResizeDirective = ($document) ->
 
             bar = getNearestBarElement(event.target)
             return if !bar? or bar.classList.contains("is-hidden")
+            return if !isBarEditable(bar)
 
             edge = resolveResizeEdge(bar, event)
             return if !edge?

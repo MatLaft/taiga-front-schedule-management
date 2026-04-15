@@ -117,6 +117,16 @@ div.wrapper.issues.schedule(
                                     class="arrow-down"
                                     d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
 
+                        div.estimated-hours-field(data-fieldname="estimated_hours" ng-click="ctrl.toggleEstimatedHoursOrder()")
+                            span {{"SCHEDULE.TABLE.COLUMNS.ESTIMATED_HOURS" | translate}}
+                            svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('estimated_hours')")
+                                path(
+                                    class="arrow-up"
+                                    d="M11.6232 6.57199C12.5713 6.57199 12.9872 5.37569 12.2435 4.7876L8.62027 1.92248C8.25672 1.635 7.74328 1.635 7.37973 1.92248L3.75652 4.7876C3.01283 5.37569 3.42868 6.57199 4.37679 6.57199L11.6232 6.57199Z")
+                                path(
+                                    class="arrow-down"
+                                    d="M11.6232 9.42892C12.5713 9.42892 12.9872 10.6252 12.2435 11.2133L8.62027 14.0784C8.25672 14.3659 7.74328 14.3659 7.37973 14.0784L3.75652 11.2133C3.01283 10.6252 3.42868 9.42892 4.37679 9.42892H11.6232Z")
+
                         div.issue-field(data-fieldname="estimated_start" ng-click="ctrl.toggleDateOrder('estimated_start')")
                             span {{"SCHEDULE.TABLE.COLUMNS.ESTIMATED_START" | translate}}
                             svg(viewBox="0 0 16 16" ng-class="ctrl.getSortIconClass('estimated_start')")
@@ -188,25 +198,69 @@ div.wrapper.issues.schedule(
                         div.status-field.schedule-status-cell(title="{{ ctrl.getStatusLabel(row) }}")
                             span.schedule-status-value(ng-style="ctrl.getStatusStyle(row)") {{ ctrl.getStatusLabel(row) }}
 
+                        div.estimated-hours-field.schedule-hours-cell(
+                            ng-class="{'is-readonly': !ctrl.canEditDate(row), 'is-editing': ctrl.isEditingEstimatedHours(row)}"
+                        )
+                            .options-column(ng-if="ctrl.canEditDate(row) && !ctrl.isEditingEstimatedHours(row)")
+                                a.edit-estimated-hours(
+                                    href=""
+                                    ng-click="ctrl.startEstimatedHoursEdit(row, $event)"
+                                    title="{{'ADMIN.COMMON.TITLE_ACTION_EDIT_VALUE' | translate}}"
+                                )
+                                    tg-svg(svg-icon="icon-edit")
+
+                            span.schedule-hours-value(ng-if="!ctrl.isEditingEstimatedHours(row)") {{ ctrl.estimatedHoursLabel(row) }}
+
+                            .options-column(
+                                ng-if="ctrl.isEditingEstimatedHours(row)"
+                                tg-loading="ctrl.isSaving(row, 'estimated_hours')"
+                            )
+                                a.save-estimated-hours(
+                                    href=""
+                                    ng-click="ctrl.confirmEstimatedHoursEdit(row, $event)"
+                                    title="{{'COMMON.SAVE' | translate}}"
+                                )
+                                    tg-svg(svg-icon="icon-check-empty")
+                                a.cancel-estimated-hours(
+                                    href=""
+                                    ng-click="ctrl.cancelEstimatedHoursEdit(row, $event)"
+                                    title="{{'COMMON.CANCEL' | translate}}"
+                                )
+                                    tg-svg(svg-icon="icon-close")
+
+                            .schedule-hours-editor(ng-if="ctrl.isEditingEstimatedHours(row)")
+                                input.schedule-hours-input(
+                                    type="text"
+                                    inputmode="decimal"
+                                    placeholder="?"
+                                    ng-model="row.estimatedHoursInput"
+                                    ng-keydown="ctrl.onEstimatedHoursKeydown($event, row)"
+                                    ng-disabled="ctrl.isSaving(row, 'estimated_hours') || !ctrl.canEditDate(row)"
+                                    ng-class="{'is-saving': ctrl.isSaving(row, 'estimated_hours'), 'is-readonly': !ctrl.canEditDate(row)}"
+                                )
+
                         div.issue-field.schedule-date-cell
                             button.schedule-date-value(
                                 type="button"
                                 ng-click="ctrl.openDateLightbox(row, 'estimated_start')"
-                                ng-disabled="ctrl.isSaving(row, 'estimated_start')"
+                                ng-disabled="ctrl.isSaving(row, 'estimated_start') || !ctrl.canEditDate(row)"
+                                ng-class="{'is-saving': ctrl.isSaving(row, 'estimated_start'), 'is-readonly': !ctrl.canEditDate(row)}"
                             ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'estimated_start')) }}
 
                         div.modified-field.schedule-date-cell
                             button.schedule-date-value(
                                 type="button"
                                 ng-click="ctrl.openDateLightbox(row, 'actual_start')"
-                                ng-disabled="ctrl.isSaving(row, 'actual_start')"
+                                ng-disabled="ctrl.isSaving(row, 'actual_start') || !ctrl.canEditDate(row)"
+                                ng-class="{'is-saving': ctrl.isSaving(row, 'actual_start'), 'is-readonly': !ctrl.canEditDate(row)}"
                             ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'actual_start')) }}
 
                         div.due-date-field.schedule-date-cell
                             button.schedule-date-value(
                                 type="button"
                                 ng-click="ctrl.openDateLightbox(row, 'due_date')"
-                                ng-disabled="ctrl.isSaving(row, 'due_date')"
+                                ng-disabled="ctrl.isSaving(row, 'due_date') || !ctrl.canEditDate(row)"
+                                ng-class="{'is-saving': ctrl.isSaving(row, 'due_date'), 'is-readonly': !ctrl.canEditDate(row)}"
                             ) {{ ctrl.formatDate(ctrl.getDateValue(row, 'due_date')) }}
 
                         div.assigned-field

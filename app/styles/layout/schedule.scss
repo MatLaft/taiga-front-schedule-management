@@ -13,6 +13,7 @@
 
             .issue-field,
             .status-field,
+            .estimated-hours-field,
             .modified-field,
             .due-date-field {
                 justify-content: flex-end;
@@ -42,6 +43,12 @@
         .due-date-field {
             flex-basis: 130px;
             max-width: 130px;
+            text-align: right;
+        }
+
+        .estimated-hours-field {
+            flex-basis: 150px;
+            max-width: 150px;
             text-align: right;
         }
 
@@ -134,6 +141,80 @@
         text-align: right;
     }
 
+    .schedule-hours-cell {
+        align-items: center;
+        display: flex;
+        justify-content: flex-end;
+        min-height: 1.75rem;
+        position: relative;
+        text-align: right;
+        white-space: nowrap;
+
+        .schedule-hours-value {
+            color: $color-link-primary;
+            display: inline-block;
+        }
+
+        .options-column {
+            align-items: center;
+            display: flex;
+            justify-content: flex-end;
+            margin-inline-end: .35rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: none;
+
+            a {
+                align-items: center;
+                background: transparent;
+                border: 0;
+                box-shadow: none;
+                color: rgb(112, 114, 143);
+                display: inline-flex;
+                justify-content: center;
+                margin-inline-start: .35rem;
+                outline: none;
+
+                &:focus,
+                &:active {
+                    border: 0;
+                    box-shadow: none;
+                    outline: none;
+                }
+            }
+
+            tg-svg svg,
+            tg-svg .icon,
+            tg-svg,
+            .icon {
+                fill: rgb(112, 114, 143);
+                height: 1rem;
+                width: 1rem;
+            }
+        }
+
+        .schedule-hours-editor {
+            display: flex;
+            justify-content: flex-end;
+            margin-inline-end: .15rem;
+        }
+
+        &:hover:not(.is-readonly):not(.is-editing),
+        &:focus-within:not(.is-readonly):not(.is-editing),
+        &.is-editing {
+            .options-column {
+                opacity: 1;
+                pointer-events: auto;
+            }
+        }
+
+        &.is-readonly {
+            .schedule-hours-value {
+                color: rgb(112, 114, 143);
+            }
+        }
+    }
+
     .schedule-status-cell {
         @include ellipsis(100%);
     }
@@ -154,6 +235,16 @@
         text-decoration: none;
 
         &:disabled {
+            cursor: default;
+        }
+
+        &.is-readonly,
+        &.is-readonly:disabled {
+            color: rgb(112, 114, 143);
+            cursor: default;
+        }
+
+        &.is-saving:disabled {
             color: $color-gray400;
             cursor: wait;
         }
@@ -162,6 +253,40 @@
         &:active {
             box-shadow: none;
             outline: none;
+        }
+    }
+
+    .schedule-hours-input {
+        background: $color-white;
+        border: 1px solid transparent;
+        border-radius: 2px;
+        color: $color-link-primary;
+        max-width: 100%;
+        min-height: 1.75rem;
+        padding: .2rem .35rem;
+        text-align: right;
+        width: 4.5rem;
+
+        &:focus,
+        &:active {
+            border-color: $color-gray300;
+            box-shadow: none;
+            outline: none;
+        }
+
+        &:disabled {
+            cursor: default;
+        }
+
+        &.is-readonly,
+        &.is-readonly:disabled {
+            color: rgb(112, 114, 143);
+            cursor: default;
+        }
+
+        &.is-saving:disabled {
+            color: $color-gray400;
+            cursor: wait;
         }
     }
 
