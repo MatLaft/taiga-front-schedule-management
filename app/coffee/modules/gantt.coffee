@@ -159,7 +159,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 row: row
                 type: "epic"
                 item: row.item
-                saveOptions: {}
+                saveOptions: {include_schedule: true}
             }
 
         if row.epicId?
@@ -169,7 +169,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                     row: epicRow
                     type: "epic"
                     item: epicRow.item
-                    saveOptions: {}
+                    saveOptions: {include_schedule: true}
                 }
 
         if row.type == "story"
@@ -767,7 +767,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             end = date.clone() if date.isAfter(end)
         )
 
-        computedStart = start.clone().subtract(1, "week").startOf("day")
+        computedStart = start.clone().subtract(3, "day").startOf("day")
         if !@timelineStartAnchor?
             @timelineStartAnchor = computedStart.clone()
 
