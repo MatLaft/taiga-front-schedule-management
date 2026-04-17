@@ -210,7 +210,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     stopColorMenuEvent: (event) ->
         return if !event?
-        event.preventDefault()
+        isCustomColorInput = event.target?.classList?.contains("custom-color-input")
+        event.preventDefault() if !isCustomColorInput
         event.stopPropagation()
 
     onDocumentClick: (event) ->
@@ -235,14 +236,27 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         @activeColorMenuRowId = row.rowId
         target = @_getTargetNodeForColorChange(row)
-        @nodeCustomColorByRowId[row.rowId] = @_getNodeOwnColor(target?.row or row)
+        @nodeCustomColorByRowId[row.rowId] = @_normalizeColorValue(target?.item?.color)
 
     onNodeColorInputKeyDown: (event, row) ->
         return if !event?
         return if event.which != 13
 
         @stopColorMenuEvent(event)
-        return @selectNodeColor(event, row, @nodeCustomColorByRowId[row.rowId])
+        return @applyNodeCustomColor(row)
+
+    onNodeColorInputBlur: (row) ->
+        return @applyNodeCustomColor(row)
+
+    applyNodeCustomColor: (row) ->
+        return @q.when() if !row?
+
+        target = @_getTargetNodeForColorChange(row)
+        currentColor = @_normalizeColorValue(target?.item?.color)
+        typedColor = @_normalizeColorValue(@nodeCustomColorByRowId[row.rowId])
+
+        return @q.when() if !typedColor? or typedColor == currentColor
+        return @selectNodeColor(null, row, typedColor)
 
     selectNodeColor: (event, row, color) ->
         @stopColorMenuEvent(event)

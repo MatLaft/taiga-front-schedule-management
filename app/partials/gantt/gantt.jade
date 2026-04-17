@@ -124,10 +124,11 @@ div.wrapper.gantt(
                                                             )
                                                         input.custom-color-input(
                                                             type="text"
-                                                            maxlength="7"
-                                                            placeholder="Type hex code"
+                                                            maxlength="32"
+                                                            placeholder="Type color (#hex, rgb, name)"
                                                             ng-model="ctrl.nodeCustomColorByRowId[node.rowId]"
                                                             ng-keydown="ctrl.onNodeColorInputKeyDown($event, node)"
+                                                            ng-blur="ctrl.onNodeColorInputBlur(node)"
                                                             ng-click="ctrl.stopColorMenuEvent($event)"
                                                         )
                                             span.gantt-row-label {{ node.item.subject || node.item.name || "-" }}
@@ -193,10 +194,11 @@ div.wrapper.gantt(
                                                                     )
                                                                 input.custom-color-input(
                                                                     type="text"
-                                                                    maxlength="7"
-                                                                    placeholder="Type hex code"
+                                                                    maxlength="32"
+                                                                    placeholder="Type color (#hex, rgb, name)"
                                                                     ng-model="ctrl.nodeCustomColorByRowId[story.rowId]"
                                                                     ng-keydown="ctrl.onNodeColorInputKeyDown($event, story)"
+                                                                    ng-blur="ctrl.onNodeColorInputBlur(story)"
                                                                     ng-click="ctrl.stopColorMenuEvent($event)"
                                                                 )
                                                     span.gantt-row-label {{ story.item.subject || story.item.name || "-" }}
@@ -252,10 +254,11 @@ div.wrapper.gantt(
                                                                         )
                                                                     input.custom-color-input(
                                                                         type="text"
-                                                                        maxlength="7"
-                                                                        placeholder="Type hex code"
+                                                                        maxlength="32"
+                                                                        placeholder="Type color (#hex, rgb, name)"
                                                                         ng-model="ctrl.nodeCustomColorByRowId[task.rowId]"
                                                                         ng-keydown="ctrl.onNodeColorInputKeyDown($event, task)"
+                                                                        ng-blur="ctrl.onNodeColorInputBlur(task)"
                                                                         ng-click="ctrl.stopColorMenuEvent($event)"
                                                                     )
                                                         span.gantt-row-label {{ task.item.subject || task.item.name || "-" }}
@@ -320,10 +323,11 @@ div.wrapper.gantt(
                                                             )
                                                         input.custom-color-input(
                                                             type="text"
-                                                            maxlength="7"
-                                                            placeholder="Type hex code"
+                                                            maxlength="32"
+                                                            placeholder="Type color (#hex, rgb, name)"
                                                             ng-model="ctrl.nodeCustomColorByRowId[node.rowId]"
                                                             ng-keydown="ctrl.onNodeColorInputKeyDown($event, node)"
+                                                            ng-blur="ctrl.onNodeColorInputBlur(node)"
                                                             ng-click="ctrl.stopColorMenuEvent($event)"
                                                         )
                                             span.gantt-row-label {{ node.item.subject || node.item.name || "-" }}
@@ -379,10 +383,11 @@ div.wrapper.gantt(
                                                                 )
                                                             input.custom-color-input(
                                                                 type="text"
-                                                                maxlength="7"
-                                                                placeholder="Type hex code"
+                                                                maxlength="32"
+                                                                placeholder="Type color (#hex, rgb, name)"
                                                                 ng-model="ctrl.nodeCustomColorByRowId[task.rowId]"
                                                                 ng-keydown="ctrl.onNodeColorInputKeyDown($event, task)"
+                                                                ng-blur="ctrl.onNodeColorInputBlur(task)"
                                                                 ng-click="ctrl.stopColorMenuEvent($event)"
                                                             )
                                                 span.gantt-row-label {{ task.item.subject || task.item.name || "-" }}
@@ -437,10 +442,11 @@ div.wrapper.gantt(
                                                         )
                                                     input.custom-color-input(
                                                         type="text"
-                                                        maxlength="7"
-                                                        placeholder="Type hex code"
+                                                        maxlength="32"
+                                                        placeholder="Type color (#hex, rgb, name)"
                                                         ng-model="ctrl.nodeCustomColorByRowId[node.rowId]"
                                                         ng-keydown="ctrl.onNodeColorInputKeyDown($event, node)"
+                                                        ng-blur="ctrl.onNodeColorInputBlur(node)"
                                                         ng-click="ctrl.stopColorMenuEvent($event)"
                                                     )
                                         span.gantt-row-label {{ node.item.subject || node.item.name || "-" }}
