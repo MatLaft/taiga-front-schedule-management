@@ -34,6 +34,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @tree = []
         @ganttBars = []
         @timeline = @_emptyTimeline()
+        @timelineStartAnchor = null
         @membersById = {}
         @rowNodesById = {}
         @savingRows = {}
@@ -86,6 +87,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             return @q.reject(xhr)
 
     buildGanttData: (epics, userstories, tasks) ->
+        @timelineStartAnchor = null
         @tree = @_buildTree(epics, userstories, tasks)
         @_refreshComputedData()
 
@@ -154,19 +156,23 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @repo.save(row.item, true, {include_schedule: true}).then =>
             delete @savingRows[rowId]
 
-            row.startMoment = startMoment
-            row.dueMoment = dueMoment
-            row.startLabel = @_formatDateShort(startMoment)
-            row.dueLabel = @_formatDateShort(dueMoment)
+            savedStartMoment = @_extractStartMoment(row.item)
+            savedDueMoment = @_extractDueMoment(row.item, savedStartMoment)
 
+            row.startMoment = savedStartMoment
+            row.dueMoment = savedDueMoment
+            row.startLabel = @_formatDateShort(savedStartMoment)
+            row.dueLabel = @_formatDateShort(savedDueMoment)
+
+            @timelineStartAnchor = null
             @_refreshComputedData()
+            @scope.$evalAsync()
             @confirm.notify("success")
             return
         , =>
             row.item.revert()
             delete @savingRows[rowId]
             @confirm.notify("error")
-            @_refreshComputedData()
             return @q.reject()
 
     _buildTree: (epics, userstories, tasks) ->
@@ -532,7 +538,11 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             end = date.clone() if date.isAfter(end)
         )
 
-        start = start.clone().subtract(1, "day").startOf("day")
+        computedStart = start.clone().subtract(1, "week").startOf("day")
+        if !@timelineStartAnchor?
+            @timelineStartAnchor = computedStart.clone()
+
+        start = @timelineStartAnchor.clone()
         end.endOf("month")
 
         months = []
@@ -1031,6 +1041,14 @@ GanttSyncRowsDirective = ->
                 bars: bars
             }
 
+        getBarsModelByRowId = ->
+            modelByRowId = {}
+            _.each($scope.ctrl?.ganttBars or [], (barModel) ->
+                return if !barModel?.rowId?
+                modelByRowId["#{barModel.rowId}"] = barModel
+            )
+            return modelByRowId
+
         buildEpicPath = (startDay, endDay, rowIndex, totalDays) ->
             left = Math.max(0, startDay - 1)
             right = Math.min(totalDays, endDay)
@@ -1069,6 +1087,8 @@ GanttSyncRowsDirective = ->
             bars = barsData.bars
             return if !barsSvg?
 
+            barsModelByRowId = getBarsModelByRowId()
+
             totalDays = parseFloat(barsSvg.getAttribute("data-total-days") or "0") or 0
             totalDays = Math.max(1, totalDays)
             barsSvg.setAttribute("viewBox", "0 0 #{totalDays} #{Math.max(1, visibleRowsCount)}")
@@ -1082,11 +1102,20 @@ GanttSyncRowsDirective = ->
                     bar.removeAttribute("data-row-index")
                     return
 
-                startDay = parseFloat(bar.getAttribute("data-start-day") or "1") or 1
-                endDay = parseFloat(bar.getAttribute("data-end-day") or startDay) or startDay
-                shape = bar.getAttribute("data-shape") or "arrow"
-                barType = bar.getAttribute("data-bar-type") or ""
+                barModel = barsModelByRowId[rowId]
+                startDay = if barModel?.startDay? then parseFloat(barModel.startDay) else parseFloat(bar.getAttribute("data-start-day") or "1")
+                startDay = 1 if !isFinite(startDay) or startDay <= 0
+
+                endDay = if barModel?.endDay? then parseFloat(barModel.endDay) else parseFloat(bar.getAttribute("data-end-day") or "#{startDay}")
+                endDay = startDay if !isFinite(endDay) or endDay < startDay
+
+                shape = barModel?.shape or bar.getAttribute("data-shape") or "arrow"
+                barType = barModel?.barType or bar.getAttribute("data-bar-type") or ""
                 bar.setAttribute("data-row-index", rowIndex)
+                bar.setAttribute("data-start-day", startDay)
+                bar.setAttribute("data-end-day", endDay)
+                bar.setAttribute("data-shape", shape)
+                bar.setAttribute("data-bar-type", barType)
 
                 if shape == "rounded"
                     rounded = buildRoundedRect(startDay, endDay, rowIndex, totalDays)
@@ -1126,6 +1155,15 @@ GanttSyncRowsDirective = ->
         observer = null
         scheduleUpdate = _.debounce(updateVisibleRows, 10)
         onWindowResize = _.debounce(updateVisibleRows, 25)
+        unwatchBars = $scope.$watchCollection("ctrl.ganttBars", ->
+            _.defer(scheduleUpdate)
+        )
+        unwatchTimelineStart = $scope.$watch("ctrl.timeline.start", ->
+            _.defer(scheduleUpdate)
+        )
+        unwatchTimelineDays = $scope.$watch("ctrl.timeline.totalDays", ->
+            _.defer(scheduleUpdate)
+        )
 
         if window.MutationObserver?
             observer = new MutationObserver ->
@@ -1149,6 +1187,9 @@ GanttSyncRowsDirective = ->
             leftPanel.removeEventListener("change", onChange)
             window.removeEventListener("resize", onWindowResize)
             observer.disconnect() if observer?
+            unwatchBars?()
+            unwatchTimelineStart?()
+            unwatchTimelineDays?()
 
     return {link: link}
 
@@ -1174,6 +1215,10 @@ GanttBarResizeDirective = ($document) ->
         hoveredEdge = null
         edgeIndicator = document.createElementNS(SVG_NS, "svg")
         edgeIndicator.setAttribute("class", "gantt-edge-indicator")
+        edgeIndicator.style.width = "0"
+        edgeIndicator.style.height = "0"
+        edgeIndicator.setAttribute("width", 0)
+        edgeIndicator.setAttribute("height", 0)
         edgeIndicatorLine = document.createElementNS(SVG_NS, "path")
         edgeIndicatorLine.classList.add("gantt-edge-indicator-line")
         edgeIndicatorArrow = document.createElementNS(SVG_NS, "path")
@@ -1357,7 +1402,10 @@ GanttBarResizeDirective = ($document) ->
             ctrl = $scope.ctrl
             return if !ctrl?.saveBarDateRange?
 
-            ctrl.saveBarDateRange(finishedDrag.rowId, finishedDrag.startDay, finishedDrag.endDay).then null, =>
+            ctrl.saveBarDateRange(finishedDrag.rowId, finishedDrag.startDay, finishedDrag.endDay).then =>
+                $scope.$evalAsync()
+                return
+            , =>
                 return if !finishedDrag?.bar?
                 finishedDrag.bar.setAttribute("data-start-day", finishedDrag.initialStartDay)
                 finishedDrag.bar.setAttribute("data-end-day", finishedDrag.initialEndDay)
