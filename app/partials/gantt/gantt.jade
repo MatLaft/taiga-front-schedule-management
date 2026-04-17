@@ -81,7 +81,7 @@ div.wrapper.gantt(
                                 )
                                 label.gantt-tree-row.gantt-row.gantt-row-epic(
                                     ng-class="{'is-collapsible': node.children.length, 'has-color-menu-open': ctrl.isNodeColorMenuOpen(node.rowId)}"
-                                    ng-attr-for="{{node.children.length ? node.inputId : undefined}}"
+                                    ng-attr-for="{{node.children.length ? node.inputId : ('gantt-noop-' + node.rowId)}}"
                                     ng-attr-data-gantt-row-id="{{node.rowId}}"
                                 )
                                     span.gantt-col-title(ng-attr-title="{{node.item.subject || node.item.name || '-'}}")
@@ -149,7 +149,7 @@ div.wrapper.gantt(
                                         )
                                         label.gantt-tree-row.gantt-row.gantt-row-story(
                                             ng-class="{'is-collapsible': story.children.length, 'has-color-menu-open': ctrl.isNodeColorMenuOpen(story.rowId)}"
-                                            ng-attr-for="{{story.children.length ? story.inputId : undefined}}"
+                                            ng-attr-for="{{story.children.length ? story.inputId : ('gantt-noop-' + story.rowId)}}"
                                             ng-attr-data-gantt-row-id="{{story.rowId}}"
                                         )
                                             span.gantt-col-title(ng-attr-title="{{story.item.subject || story.item.name || '-'}}")
@@ -278,7 +278,7 @@ div.wrapper.gantt(
                                 )
                                 label.gantt-tree-row.gantt-row.gantt-row-story.gantt-row-story-root(
                                     ng-class="{'is-collapsible': node.children.length, 'has-color-menu-open': ctrl.isNodeColorMenuOpen(node.rowId)}"
-                                    ng-attr-for="{{node.children.length ? node.inputId : undefined}}"
+                                    ng-attr-for="{{node.children.length ? node.inputId : ('gantt-noop-' + node.rowId)}}"
                                     ng-attr-data-gantt-row-id="{{node.rowId}}"
                                 )
                                     span.gantt-col-title(ng-attr-title="{{node.item.subject || node.item.name || '-'}}")
