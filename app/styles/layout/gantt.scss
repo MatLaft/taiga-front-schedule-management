@@ -245,16 +245,54 @@
         align-items: center;
         color: $color-link-tertiary;
         display: inline-flex;
-        flex: 0 0 1rem;
+        flex: 0 0 1.35rem;
         justify-content: center;
         margin-inline-end: .2rem;
-        width: 1rem;
+        position: relative;
+        width: 1.35rem;
+    }
+
+    .gantt-row-type-button {
+        align-items: center;
+        background: transparent;
+        border: 0;
+        color: inherit;
+        cursor: pointer;
+        display: inline-flex;
+        height: 1.3rem;
+        justify-content: center;
+        margin: 0;
+        padding: 0;
+        width: 1.3rem;
+
+        &:focus {
+            outline: 0;
+        }
+
+        &.is-disabled {
+            cursor: default;
+            opacity: .7;
+        }
 
         svg {
             display: block;
-            height: 1.9rem;
-            width: 1.9rem;
+            height: 1.3rem;
+            width: 1.3rem;
         }
+    }
+
+    .gantt-row-color-dropdown {
+        background: $color-white;
+        border: solid 1px $color-gray400;
+        box-shadow: 4px 4px 8px rgba(46, 52, 64, .1);
+        left: .25rem;
+        min-width: 306px;
+        opacity: 1;
+        padding: 1rem;
+        pointer-events: auto;
+        position: absolute;
+        top: 1.8rem;
+        z-index: 12;
     }
 
     .gantt-chevron {
@@ -360,10 +398,15 @@
         z-index: 1;
     }
 
+    .gantt-tree-row.has-color-menu-open {
+        z-index: 8;
+    }
+
     .gantt-tree-row > .gantt-col-title {
         align-items: center;
         display: flex;
         min-width: 0;
+        overflow: visible;
     }
 
     .gantt-tree-row .gantt-col-assignee,

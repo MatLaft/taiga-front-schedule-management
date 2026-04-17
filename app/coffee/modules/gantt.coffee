@@ -9,6 +9,7 @@
 taiga = @.taiga
 mixOf = @.taiga.mixOf
 bindMethods = @.taiga.bindMethods
+getDefaulColorList = taiga.getDefaulColorList
 
 module = angular.module("taigaGantt", [])
 
@@ -38,6 +39,17 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @membersById = {}
         @rowNodesById = {}
         @savingRows = {}
+        @sourceEpics = []
+        @sourceUserstories = []
+        @sourceTasks = []
+        @colorList = getDefaulColorList()
+        @activeColorMenuRowId = null
+        @nodeCustomColorByRowId = {}
+
+        @documentClickHandler = (event) => @onDocumentClick(event)
+        angular.element(document).on("click", @documentClickHandler)
+        @scope.$on "$destroy", =>
+            angular.element(document).off("click", @documentClickHandler)
 
         promise = @loadInitialData()
         promise.then null, @onInitialDataError.bind(@)
@@ -87,8 +99,12 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             return @q.reject(xhr)
 
     buildGanttData: (epics, userstories, tasks) ->
+        @sourceEpics = epics or []
+        @sourceUserstories = userstories or []
+        @sourceTasks = tasks or []
+
         @timelineStartAnchor = null
-        @tree = @_buildTree(epics, userstories, tasks)
+        @tree = @_buildTree(@sourceEpics, @sourceUserstories, @sourceTasks)
         @_refreshComputedData()
 
     _refreshComputedData: ->
@@ -130,6 +146,144 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         permissions = @scope.project?.my_permissions or []
         return permissions.indexOf(permission) != -1
+
+    _getNodeOwnColor: (row) ->
+        return null if !row?
+        return @_normalizeColorValue(row.item?.color) or @_normalizeColorValue(row.barColor)
+
+    _getTargetNodeForColorChange: (row) ->
+        return null if !row?.item?
+
+        if row.type == "epic"
+            return {
+                row: row
+                type: "epic"
+                item: row.item
+                saveOptions: {}
+            }
+
+        if row.epicId?
+            epicRow = @rowNodesById["epic-#{row.epicId}"]
+            if epicRow?.item?
+                return {
+                    row: epicRow
+                    type: "epic"
+                    item: epicRow.item
+                    saveOptions: {}
+                }
+
+        if row.type == "story"
+            return {
+                row: row
+                type: "story"
+                item: row.item
+                saveOptions: {include_schedule: true}
+            }
+
+        if row.type == "task"
+            storyId = @_extractStoryId(row.item)
+            storyRow = @rowNodesById["story-#{storyId}"]
+            if storyRow?.item? and !storyRow.epicId?
+                return {
+                    row: storyRow
+                    type: "story"
+                    item: storyRow.item
+                    saveOptions: {include_schedule: true}
+                }
+
+            return {
+                row: row
+                type: "task"
+                item: row.item
+                saveOptions: {include_schedule: true}
+            }
+
+        return null
+
+    canEditNodeColor: (row) ->
+        target = @_getTargetNodeForColorChange(row)
+        return false if !target?
+        return @_canModifyType(target.type)
+
+    isNodeColorMenuOpen: (rowId) ->
+        return @activeColorMenuRowId == rowId
+
+    stopColorMenuEvent: (event) ->
+        return if !event?
+        event.preventDefault()
+        event.stopPropagation()
+
+    onDocumentClick: (event) ->
+        return if !@activeColorMenuRowId?
+
+        target = event?.target
+        while target?
+            if target.classList?.contains("gantt-row-type-icon")
+                return
+            target = target.parentNode
+
+        @activeColorMenuRowId = null
+        @scope.$evalAsync()
+
+    toggleNodeColorMenu: (event, row) ->
+        @stopColorMenuEvent(event)
+        return if !@canEditNodeColor(row)
+
+        if @activeColorMenuRowId == row?.rowId
+            @activeColorMenuRowId = null
+            return
+
+        @activeColorMenuRowId = row.rowId
+        target = @_getTargetNodeForColorChange(row)
+        @nodeCustomColorByRowId[row.rowId] = @_getNodeOwnColor(target?.row or row)
+
+    onNodeColorInputKeyDown: (event, row) ->
+        return if !event?
+        return if event.which != 13
+
+        @stopColorMenuEvent(event)
+        return @selectNodeColor(event, row, @nodeCustomColorByRowId[row.rowId])
+
+    selectNodeColor: (event, row, color) ->
+        @stopColorMenuEvent(event)
+        return @q.when() if !row?
+
+        normalizedColor = @_normalizeColorValue(color)
+        return @q.when() if !normalizedColor?
+
+        target = @_getTargetNodeForColorChange(row)
+        return @q.reject() if !target?
+        return @q.reject() if !@_canModifyType(target.type)
+
+        currentColor = @_normalizeColorValue(target.item?.color)
+        return @q.when() if currentColor == normalizedColor
+
+        target.item.setAttr("color", normalizedColor)
+
+        affectedRows = _.uniq([row.rowId, target.row.rowId])
+        _.each(affectedRows, (affectedRowId) =>
+            @savingRows[affectedRowId] = true
+        )
+
+        saveOptions = target.saveOptions or {}
+        return @repo.save(target.item, true, saveOptions).then =>
+            _.each(affectedRows, (affectedRowId) =>
+                delete @savingRows[affectedRowId]
+            )
+
+            @activeColorMenuRowId = null
+            @timelineStartAnchor = null
+            @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
+            @scope.$evalAsync()
+            @confirm.notify("success")
+            return
+        , =>
+            target.item.revert()
+            _.each(affectedRows, (affectedRowId) =>
+                delete @savingRows[affectedRowId]
+            )
+            @confirm.notify("error")
+            return @q.reject()
 
     saveBarDateRange: (rowId, startDay, endDay) ->
         row = @rowNodesById[rowId]
@@ -183,6 +337,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         _.each(epicNodes, (epicNode) =>
             epicNodesById["#{epicNode.item.id}"] = epicNode
+            epicNode.epicId = @_normalizeId(epicNode.item?.id)
             epicNode.barColor = @_extractEpicColor(epicNode.item)
         )
 
@@ -196,10 +351,12 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             parentEpic = epicNodesById["#{epicId}"]
 
             if parentEpic?
+                storyNode.epicId = @_normalizeId(parentEpic.item?.id)
                 storyNode.barColor = parentEpic.barColor or @_extractStoryEpicColor(story, epicNodesById)
                 parentEpic.children.push(storyNode)
             else
-                storyNode.barColor = @_extractStoryEpicColor(story, epicNodesById) or @_getNoEpicBarColor()
+                storyNode.epicId = null
+                storyNode.barColor = @_extractOwnItemColor(story) or @_getNoEpicBarColor()
                 rootStoryNodes.push(storyNode)
         )
 
@@ -209,10 +366,15 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             parentStory = storyNodesById["#{storyId}"]
 
             if parentStory?
-                taskNode.barColor = parentStory.barColor or @_getNoEpicBarColor()
+                taskNode.epicId = parentStory.epicId
+                if taskNode.epicId?
+                    taskNode.barColor = parentStory.barColor or @_getNoEpicBarColor()
+                else
+                    taskNode.barColor = parentStory.barColor or @_extractOwnItemColor(task) or @_getNoEpicBarColor()
                 parentStory.children.push(taskNode)
             else
-                taskNode.barColor = @_getNoEpicBarColor()
+                taskNode.epicId = null
+                taskNode.barColor = @_extractOwnItemColor(task) or @_getNoEpicBarColor()
                 rootTaskNodes.push(taskNode)
         )
 
@@ -244,6 +406,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             progressLabel: "#{progressValue}%"
             canEdit: @_canModifyType(type)
             barColor: null
+            epicId: null
             children: []
             isPlaceholder: false
         }
@@ -338,6 +501,10 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 return color if color?
 
         return null
+
+    _extractOwnItemColor: (item) ->
+        return null if !item?
+        return @_normalizeColorValue(item.color)
 
     _getNoEpicBarColor: ->
         return "rgb(112, 114, 143)"
