@@ -21,240 +21,274 @@ div.wrapper.gantt(
         p(ng-if="ctrl.loadingError") Unable to load gantt data.
 
         .gantt-workspace(tg-gantt-sync-rows tg-gantt-panel-resize tg-gantt-bar-resize ng-if="!ctrl.loading && !ctrl.loadingError")
-            aside.gantt-left-panel(tg-gantt-column-resize)
-                .gantt-table-month-spacer
-                .gantt-table-header
-                    span.gantt-col-title.gantt-col-header
-                        span.gantt-col-header-text Item
-                        button.gantt-col-resizer(
-                            type="button"
-                            data-gantt-resize="item"
-                            aria-label="Resize item column"
-                        )
-                    span.gantt-col-assignee.gantt-col-header
-                        span.gantt-col-header-text Assignee
-                        button.gantt-col-resizer(
-                            type="button"
-                            data-gantt-resize="assignee"
-                            aria-label="Resize assignee column"
-                        )
-                    span.gantt-col-eh.gantt-col-header
-                        span.gantt-col-header-text EH
-                        button.gantt-col-resizer(
-                            type="button"
-                            data-gantt-resize="eh"
-                            aria-label="Resize EH column"
-                        )
-                    span.gantt-col-start.gantt-col-header
-                        span.gantt-col-header-text Start
-                        button.gantt-col-resizer(
-                            type="button"
-                            data-gantt-resize="start"
-                            aria-label="Resize start column"
-                        )
-                    span.gantt-col-due.gantt-col-header
-                        span.gantt-col-header-text Due
-                        button.gantt-col-resizer(
-                            type="button"
-                            data-gantt-resize="due"
-                            aria-label="Resize due column"
-                        )
-                    span.gantt-col-progress.gantt-col-header
-                        span.gantt-col-header-text %
+            .gantt-toolbar
+                .gantt-toolbar-inner
 
-                .gantt-tree
-                    .gantt-tree-node(
-                        ng-repeat="node in ctrl.tree track by node.rowId"
-                        ng-class="{'gantt-node-epic': node.type == 'epic', 'gantt-node-story': node.type == 'story'}"
-                        ng-switch="node.type"
-                    )
-                        div(ng-switch-when="epic")
-                            input.gantt-node-trigger(
-                                ng-if="node.children.length"
-                                type="checkbox"
-                                ng-attr-id="{{node.inputId}}"
-                                checked="checked"
+            .gantt-panels
+                aside.gantt-left-panel(tg-gantt-column-resize)
+                    .gantt-table-month-spacer
+                    .gantt-table-header
+                        span.gantt-col-title.gantt-col-header
+                            span.gantt-col-header-text Item
+                            button.gantt-col-resizer(
+                                type="button"
+                                data-gantt-resize="item"
+                                aria-label="Resize item column"
                             )
-                            label.gantt-tree-row.gantt-row.gantt-row-epic(
-                                ng-class="{'is-collapsible': node.children.length}"
-                                ng-attr-for="{{node.children.length ? node.inputId : undefined}}"
-                                ng-attr-data-gantt-row-id="{{node.rowId}}"
+                        span.gantt-col-assignee.gantt-col-header
+                            span.gantt-col-header-text Assignee
+                            button.gantt-col-resizer(
+                                type="button"
+                                data-gantt-resize="assignee"
+                                aria-label="Resize assignee column"
                             )
-                                span.gantt-col-title(ng-attr-title="{{node.label}}")
-                                    span.gantt-row-content
-                                        span.gantt-row-toggle
-                                            tg-svg.gantt-chevron(ng-if="node.children.length" svg-icon="icon-arrow-down")
-                                        span.gantt-row-label {{ node.label }}
-                                span.gantt-col-assignee {{ node.assigneeLabel }}
-                                span.gantt-col-eh {{ node.ehLabel }}
-                                span.gantt-col-start {{ node.startLabel }}
-                                span.gantt-col-due {{ node.dueLabel }}
-                                span.gantt-col-progress
-                                    span.gantt-progress-chip {{ node.progressLabel }}
-
-                            .gantt-tree-children(ng-if="node.children.length")
-                                .gantt-tree-node.gantt-node-story(ng-repeat="story in node.children track by story.rowId")
-                                    input.gantt-node-trigger(
-                                        ng-if="story.children.length"
-                                        type="checkbox"
-                                        ng-attr-id="{{story.inputId}}"
-                                        checked="checked"
-                                    )
-                                    label.gantt-tree-row.gantt-row.gantt-row-story(
-                                        ng-class="{'is-collapsible': story.children.length}"
-                                        ng-attr-for="{{story.children.length ? story.inputId : undefined}}"
-                                        ng-attr-data-gantt-row-id="{{story.rowId}}"
-                                    )
-                                        span.gantt-col-title(ng-attr-title="{{story.label}}")
-                                            span.gantt-row-content
-                                                span.gantt-row-toggle
-                                                    tg-svg.gantt-chevron(ng-if="story.children.length" svg-icon="icon-arrow-down")
-                                                span.gantt-row-label {{ story.label }}
-                                        span.gantt-col-assignee {{ story.assigneeLabel }}
-                                        span.gantt-col-eh {{ story.ehLabel }}
-                                        span.gantt-col-start {{ story.startLabel }}
-                                        span.gantt-col-due {{ story.dueLabel }}
-                                        span.gantt-col-progress
-                                            span.gantt-progress-chip {{ story.progressLabel }}
-
-                                    .gantt-tree-children(ng-if="story.children.length")
-                                        .gantt-tree-row.gantt-row.gantt-row-task(
-                                            ng-repeat="task in story.children track by task.rowId"
-                                            ng-attr-data-gantt-row-id="{{task.rowId}}"
-                                        )
-                                            span.gantt-col-title(ng-attr-title="{{task.label}}")
-                                                span.gantt-row-content
-                                                    span.gantt-row-bullet •
-                                                    span.gantt-row-label {{ task.label }}
-                                            span.gantt-col-assignee {{ task.assigneeLabel }}
-                                            span.gantt-col-eh {{ task.ehLabel }}
-                                            span.gantt-col-start {{ task.startLabel }}
-                                            span.gantt-col-due {{ task.dueLabel }}
-                                            span.gantt-col-progress
-                                                span.gantt-progress-chip {{ task.progressLabel }}
-
-                        div(ng-switch-when="story")
-                            input.gantt-node-trigger(
-                                ng-if="node.children.length"
-                                type="checkbox"
-                                ng-attr-id="{{node.inputId}}"
-                                checked="checked"
+                        span.gantt-col-eh.gantt-col-header
+                            span.gantt-col-header-text EH
+                            button.gantt-col-resizer(
+                                type="button"
+                                data-gantt-resize="eh"
+                                aria-label="Resize EH column"
                             )
-                            label.gantt-tree-row.gantt-row.gantt-row-story.gantt-row-story-root(
-                                ng-class="{'is-collapsible': node.children.length}"
-                                ng-attr-for="{{node.children.length ? node.inputId : undefined}}"
-                                ng-attr-data-gantt-row-id="{{node.rowId}}"
+                        span.gantt-col-start.gantt-col-header
+                            span.gantt-col-header-text Start
+                            button.gantt-col-resizer(
+                                type="button"
+                                data-gantt-resize="start"
+                                aria-label="Resize start column"
                             )
-                                span.gantt-col-title(ng-attr-title="{{node.label}}")
-                                    span.gantt-row-content
-                                        span.gantt-row-toggle
-                                            tg-svg.gantt-chevron(ng-if="node.children.length" svg-icon="icon-arrow-down")
-                                        span.gantt-row-label {{ node.label }}
-                                span.gantt-col-assignee {{ node.assigneeLabel }}
-                                span.gantt-col-eh {{ node.ehLabel }}
-                                span.gantt-col-start {{ node.startLabel }}
-                                span.gantt-col-due {{ node.dueLabel }}
-                                span.gantt-col-progress
-                                    span.gantt-progress-chip {{ node.progressLabel }}
+                        span.gantt-col-due.gantt-col-header
+                            span.gantt-col-header-text Due
+                            button.gantt-col-resizer(
+                                type="button"
+                                data-gantt-resize="due"
+                                aria-label="Resize due column"
+                            )
+                        span.gantt-col-progress.gantt-col-header
+                            span.gantt-col-header-text %
 
-                            .gantt-tree-children(ng-if="node.children.length")
-                                .gantt-tree-row.gantt-row.gantt-row-task(
-                                    ng-repeat="task in node.children track by task.rowId"
-                                    ng-attr-data-gantt-row-id="{{task.rowId}}"
+                    .gantt-tree
+                        .gantt-tree-node(
+                            ng-repeat="node in ctrl.tree track by node.rowId"
+                            ng-class="{'gantt-node-epic': node.type == 'epic', 'gantt-node-story': node.type == 'story'}"
+                            ng-switch="node.type"
+                        )
+                            div(ng-switch-when="epic")
+                                input.gantt-node-trigger(
+                                    ng-if="node.children.length"
+                                    type="checkbox"
+                                    ng-attr-id="{{node.inputId}}"
+                                    checked="checked"
                                 )
-                                    span.gantt-col-title(ng-attr-title="{{task.label}}")
+                                label.gantt-tree-row.gantt-row.gantt-row-epic(
+                                    ng-class="{'is-collapsible': node.children.length}"
+                                    ng-attr-for="{{node.children.length ? node.inputId : undefined}}"
+                                    ng-attr-data-gantt-row-id="{{node.rowId}}"
+                                )
+                                    span.gantt-col-title(ng-attr-title="{{node.item.subject || node.item.name || '-'}}")
                                         span.gantt-row-content
-                                            span.gantt-row-bullet •
-                                            span.gantt-row-label {{ task.label }}
-                                    span.gantt-col-assignee {{ task.assigneeLabel }}
-                                    span.gantt-col-eh {{ task.ehLabel }}
-                                    span.gantt-col-start {{ task.startLabel }}
-                                    span.gantt-col-due {{ task.dueLabel }}
+                                            span.gantt-row-toggle
+                                                tg-svg.gantt-chevron(ng-if="node.children.length" svg-icon="icon-arrow-down")
+                                            span.gantt-row-type-icon(aria-hidden="true" ng-style="node.barColor ? {'color': node.barColor} : null")
+                                                svg(xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor")
+                                                    path(stroke="none" fill="none" d="M0 0h24v24H0z")
+                                                    path(d="M6.18 10.95l2.54 3.175l.084 .093a1 1 0 0 0 1.403 -.01l1.637 -1.638l1.324 1.985a1 1 0 0 0 1.457 .226l3.632 -2.906l3.647 7.697a1 1 0 0 1 -.904 1.428h-18a1 1 0 0 1 -.904 -1.428zm5.82 -7.878a3.3 3.3 0 0 1 2.983 1.888l2.394 5.057l-3.15 2.52l-1.395 -2.092l-.075 -.099a1 1 0 0 0 -1.464 -.053l-1.711 1.709l-1.301 -1.627l-1.151 -1.435l1.888 -3.98a3.3 3.3 0 0 1 2.982 -1.888")
+                                            span.gantt-row-label {{ node.item.subject || node.item.name || "-" }}
+                                    span.gantt-col-assignee {{ node.assigneeLabel }}
+                                    span.gantt-col-eh {{ node.ehLabel }}
+                                    span.gantt-col-start {{ node.startLabel }}
+                                    span.gantt-col-due {{ node.dueLabel }}
                                     span.gantt-col-progress
-                                        span.gantt-progress-chip {{ task.progressLabel }}
+                                        span.gantt-progress-chip {{ node.progressLabel }}
 
-                        .gantt-tree-row.gantt-row.gantt-row-task.gantt-row-task-root(
-                            ng-switch-when="task"
-                            ng-attr-data-gantt-row-id="{{node.rowId}}"
-                        )
-                            span.gantt-col-title(ng-attr-title="{{node.label}}")
-                                span.gantt-row-content
-                                    span.gantt-row-bullet •
-                                    span.gantt-row-label {{ node.label }}
-                            span.gantt-col-assignee {{ node.assigneeLabel }}
-                            span.gantt-col-eh {{ node.ehLabel }}
-                            span.gantt-col-start {{ node.startLabel }}
-                            span.gantt-col-due {{ node.dueLabel }}
-                            span.gantt-col-progress
-                                span.gantt-progress-chip {{ node.progressLabel }}
+                                .gantt-tree-children(ng-if="node.children.length")
+                                    .gantt-tree-node.gantt-node-story(ng-repeat="story in node.children track by story.rowId")
+                                        input.gantt-node-trigger(
+                                            ng-if="story.children.length"
+                                            type="checkbox"
+                                            ng-attr-id="{{story.inputId}}"
+                                            checked="checked"
+                                        )
+                                        label.gantt-tree-row.gantt-row.gantt-row-story(
+                                            ng-class="{'is-collapsible': story.children.length}"
+                                            ng-attr-for="{{story.children.length ? story.inputId : undefined}}"
+                                            ng-attr-data-gantt-row-id="{{story.rowId}}"
+                                        )
+                                            span.gantt-col-title(ng-attr-title="{{story.item.subject || story.item.name || '-'}}")
+                                                span.gantt-row-content
+                                                    span.gantt-row-toggle
+                                                        tg-svg.gantt-chevron(ng-if="story.children.length" svg-icon="icon-arrow-down")
+                                                    span.gantt-row-type-icon(aria-hidden="true" ng-style="story.barColor ? {'color': story.barColor} : null")
+                                                        svg(width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+                                                            path(d="M15 12h-5")
+                                                            path(d="M15 8h-5")
+                                                            path(d="M19 17V5a2 2 0 0 0-2-2H4")
+                                                            path(d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3")
+                                                    span.gantt-row-label {{ story.item.subject || story.item.name || "-" }}
+                                            span.gantt-col-assignee {{ story.assigneeLabel }}
+                                            span.gantt-col-eh {{ story.ehLabel }}
+                                            span.gantt-col-start {{ story.startLabel }}
+                                            span.gantt-col-due {{ story.dueLabel }}
+                                            span.gantt-col-progress
+                                                span.gantt-progress-chip {{ story.progressLabel }}
 
-            .gantt-panel-resizer(
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize gantt panels"
-                tabindex="0"
-            )
+                                        .gantt-tree-children(ng-if="story.children.length")
+                                            .gantt-tree-row.gantt-row.gantt-row-task(
+                                                ng-repeat="task in story.children track by task.rowId"
+                                                ng-attr-data-gantt-row-id="{{task.rowId}}"
+                                            )
+                                                span.gantt-col-title(ng-attr-title="{{task.item.subject || task.item.name || '-'}}")
+                                                    span.gantt-row-content
+                                                        span.gantt-row-type-icon(aria-hidden="true" ng-style="task.barColor ? {'color': task.barColor} : null")
+                                                            svg(width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+                                                                path(d="m15 12-9.373 9.373a1 1 0 0 1-3.001-3L12 9")
+                                                                path(d="m18 15 4-4")
+                                                                path(d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172v-.344a2 2 0 0 0-.586-1.414l-1.657-1.657A6 6 0 0 0 12.516 3H9l1.243 1.243A6 6 0 0 1 12 8.485V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5")
+                                                        span.gantt-row-label {{ task.item.subject || task.item.name || "-" }}
+                                                span.gantt-col-assignee {{ task.assigneeLabel }}
+                                                span.gantt-col-eh {{ task.ehLabel }}
+                                                span.gantt-col-start {{ task.startLabel }}
+                                                span.gantt-col-due {{ task.dueLabel }}
+                                                span.gantt-col-progress
+                                                    span.gantt-progress-chip {{ task.progressLabel }}
 
-            section.gantt-right-panel
-                .gantt-timeline
-                    .gantt-timeline-months
-                        .gantt-month(
-                            ng-repeat="month in ctrl.timeline.months track by month.key"
-                            ng-style="{'width': (month.widthRem + 'rem')}"
-                        ) {{ month.label }}
+                            div(ng-switch-when="story")
+                                input.gantt-node-trigger(
+                                    ng-if="node.children.length"
+                                    type="checkbox"
+                                    ng-attr-id="{{node.inputId}}"
+                                    checked="checked"
+                                )
+                                label.gantt-tree-row.gantt-row.gantt-row-story.gantt-row-story-root(
+                                    ng-class="{'is-collapsible': node.children.length}"
+                                    ng-attr-for="{{node.children.length ? node.inputId : undefined}}"
+                                    ng-attr-data-gantt-row-id="{{node.rowId}}"
+                                )
+                                    span.gantt-col-title(ng-attr-title="{{node.item.subject || node.item.name || '-'}}")
+                                        span.gantt-row-content
+                                            span.gantt-row-toggle
+                                                tg-svg.gantt-chevron(ng-if="node.children.length" svg-icon="icon-arrow-down")
+                                            span.gantt-row-type-icon(aria-hidden="true" ng-style="node.barColor ? {'color': node.barColor} : null")
+                                                svg(width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+                                                    path(d="M15 12h-5")
+                                                    path(d="M15 8h-5")
+                                                    path(d="M19 17V5a2 2 0 0 0-2-2H4")
+                                                    path(d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3")
+                                            span.gantt-row-label {{ node.item.subject || node.item.name || "-" }}
+                                    span.gantt-col-assignee {{ node.assigneeLabel }}
+                                    span.gantt-col-eh {{ node.ehLabel }}
+                                    span.gantt-col-start {{ node.startLabel }}
+                                    span.gantt-col-due {{ node.dueLabel }}
+                                    span.gantt-col-progress
+                                        span.gantt-progress-chip {{ node.progressLabel }}
 
-                    .gantt-timeline-days(
-                        ng-style="ctrl.timeline.dayColumnsStyle"
-                    )
-                        .gantt-day(
-                            ng-repeat="day in ctrl.timeline.days track by day.key"
-                            ng-class="{'is-today': day.isToday}"
-                        ) {{ day.label }}
+                                .gantt-tree-children(ng-if="node.children.length")
+                                    .gantt-tree-row.gantt-row.gantt-row-task(
+                                        ng-repeat="task in node.children track by task.rowId"
+                                        ng-attr-data-gantt-row-id="{{task.rowId}}"
+                                    )
+                                        span.gantt-col-title(ng-attr-title="{{task.item.subject || task.item.name || '-'}}")
+                                            span.gantt-row-content
+                                                span.gantt-row-type-icon(aria-hidden="true" ng-style="task.barColor ? {'color': task.barColor} : null")
+                                                    svg(width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+                                                        path(d="m15 12-9.373 9.373a1 1 0 0 1-3.001-3L12 9")
+                                                        path(d="m18 15 4-4")
+                                                        path(d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172v-.344a2 2 0 0 0-.586-1.414l-1.657-1.657A6 6 0 0 0 12.516 3H9l1.243 1.243A6 6 0 0 1 12 8.485V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5")
+                                                span.gantt-row-label {{ task.item.subject || task.item.name || "-" }}
+                                        span.gantt-col-assignee {{ task.assigneeLabel }}
+                                        span.gantt-col-eh {{ task.ehLabel }}
+                                        span.gantt-col-start {{ task.startLabel }}
+                                        span.gantt-col-due {{ task.dueLabel }}
+                                        span.gantt-col-progress
+                                            span.gantt-progress-chip {{ task.progressLabel }}
 
-                    .gantt-today-line(
-                        ng-if="ctrl.timeline.todayLineStyle"
-                        ng-style="ctrl.timeline.todayLineStyle"
-                    )
-
-                    .gantt-timeline-grid(
-                        ng-style="ctrl.timeline.gridStyle"
-                    )
-                        .gantt-bars-layer
-                            svg.gantt-bars-svg(
-                                ng-style="ctrl.timeline.svgStyle"
-                                ng-attr-viewBox="0 0 {{ctrl.timeline.totalDays}} {{ctrl.timeline.rowCount}}"
-                                ng-attr-data-total-days="{{ctrl.timeline.totalDays}}"
-                                preserveAspectRatio="none"
+                            .gantt-tree-row.gantt-row.gantt-row-task.gantt-row-task-root(
+                                ng-switch-when="task"
+                                ng-attr-data-gantt-row-id="{{node.rowId}}"
                             )
-                                g(ng-repeat="bar in ctrl.ganttBars track by bar.rowId")
-                                    rect.gantt-bar(
-                                        ng-if="bar.shape == 'rounded'"
-                                        class="gantt-bar-{{bar.barType}}"
-                                        ng-attr-data-gantt-row-id="{{bar.rowId}}"
-                                        ng-attr-data-bar-type="{{bar.barType}}"
-                                        ng-attr-data-shape="{{bar.shape}}"
-                                        ng-attr-data-can-edit="{{bar.canEdit ? 'true' : 'false'}}"
-                                        ng-attr-data-start-day="{{bar.startDay}}"
-                                        ng-attr-data-end-day="{{bar.endDay}}"
-                                        ng-attr-x="{{bar.rect.x}}"
-                                        ng-attr-y="{{bar.rect.y}}"
-                                        ng-attr-width="{{bar.rect.width}}"
-                                        ng-attr-height="{{bar.rect.height}}"
-                                        ng-attr-rx="{{bar.rect.rx}}"
-                                        ng-attr-ry="{{bar.rect.ry}}"
-                                    )
+                                span.gantt-col-title(ng-attr-title="{{node.item.subject || node.item.name || '-'}}")
+                                    span.gantt-row-content
+                                        span.gantt-row-type-icon(aria-hidden="true" ng-style="node.barColor ? {'color': node.barColor} : null")
+                                            svg(width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+                                                path(d="m15 12-9.373 9.373a1 1 0 0 1-3.001-3L12 9")
+                                                path(d="m18 15 4-4")
+                                                path(d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172v-.344a2 2 0 0 0-.586-1.414l-1.657-1.657A6 6 0 0 0 12.516 3H9l1.243 1.243A6 6 0 0 1 12 8.485V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5")
+                                        span.gantt-row-label {{ node.item.subject || node.item.name || "-" }}
+                                span.gantt-col-assignee {{ node.assigneeLabel }}
+                                span.gantt-col-eh {{ node.ehLabel }}
+                                span.gantt-col-start {{ node.startLabel }}
+                                span.gantt-col-due {{ node.dueLabel }}
+                                span.gantt-col-progress
+                                    span.gantt-progress-chip {{ node.progressLabel }}
+
+                .gantt-panel-resizer(
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize gantt panels"
+                    tabindex="0"
+                )
+
+                section.gantt-right-panel
+                    .gantt-timeline
+                        .gantt-timeline-months
+                            .gantt-month(
+                                ng-repeat="month in ctrl.timeline.months track by month.key"
+                                ng-style="{'width': (month.widthRem + 'rem')}"
+                            ) {{ month.label }}
+
+                        .gantt-timeline-days(
+                            ng-style="ctrl.timeline.dayColumnsStyle"
+                        )
+                            .gantt-day(
+                                ng-repeat="day in ctrl.timeline.days track by day.key"
+                                ng-class="{'is-today': day.isToday}"
+                            ) {{ day.label }}
+
+                        .gantt-today-line(
+                            ng-if="ctrl.timeline.todayLineStyle"
+                            ng-style="ctrl.timeline.todayLineStyle"
+                        )
+
+                        .gantt-timeline-grid(
+                            ng-style="ctrl.timeline.gridStyle"
+                        )
+                            .gantt-bars-layer
+                                svg.gantt-bars-svg(
+                                    ng-style="ctrl.timeline.svgStyle"
+                                    ng-attr-viewBox="0 0 {{ctrl.timeline.totalDays}} {{ctrl.timeline.rowCount}}"
+                                    ng-attr-data-total-days="{{ctrl.timeline.totalDays}}"
+                                    preserveAspectRatio="none"
+                                )
+                                    g(ng-repeat="bar in ctrl.ganttBars track by bar.rowId")
+                                        rect.gantt-bar(
+                                            ng-if="bar.shape == 'rounded'"
+                                            class="gantt-bar-{{bar.barType}}"
+                                            ng-style="bar.style"
+                                            ng-attr-data-gantt-row-id="{{bar.rowId}}"
+                                            ng-attr-data-bar-type="{{bar.barType}}"
+                                            ng-attr-data-shape="{{bar.shape}}"
+                                            ng-attr-data-can-edit="{{bar.canEdit ? 'true' : 'false'}}"
+                                            ng-attr-data-start-day="{{bar.startDay}}"
+                                            ng-attr-data-end-day="{{bar.endDay}}"
+                                            ng-attr-x="{{bar.rect.x}}"
+                                            ng-attr-y="{{bar.rect.y}}"
+                                            ng-attr-width="{{bar.rect.width}}"
+                                            ng-attr-height="{{bar.rect.height}}"
+                                            ng-attr-rx="{{bar.rect.rx}}"
+                                            ng-attr-ry="{{bar.rect.ry}}"
+                                        )
                                         title {{ bar.label }}
 
-                                    path.gantt-bar(
-                                        ng-if="bar.shape != 'rounded'"
-                                        class="gantt-bar-{{bar.barType}}"
-                                        ng-attr-data-gantt-row-id="{{bar.rowId}}"
-                                        ng-attr-data-bar-type="{{bar.barType}}"
-                                        ng-attr-data-shape="{{bar.shape}}"
-                                        ng-attr-data-can-edit="{{bar.canEdit ? 'true' : 'false'}}"
-                                        ng-attr-data-start-day="{{bar.startDay}}"
-                                        ng-attr-data-end-day="{{bar.endDay}}"
-                                        shape-rendering="crispEdges"
-                                        ng-attr-d="{{bar.pathD}}"
-                                    )
-                                        title {{ bar.label }}
+                                        path.gantt-bar(
+                                            ng-if="bar.shape != 'rounded'"
+                                            class="gantt-bar-{{bar.barType}}"
+                                            ng-style="bar.style"
+                                            ng-attr-data-gantt-row-id="{{bar.rowId}}"
+                                            ng-attr-data-bar-type="{{bar.barType}}"
+                                            ng-attr-data-shape="{{bar.shape}}"
+                                            ng-attr-data-can-edit="{{bar.canEdit ? 'true' : 'false'}}"
+                                            ng-attr-data-start-day="{{bar.startDay}}"
+                                            ng-attr-data-end-day="{{bar.endDay}}"
+                                            shape-rendering="crispEdges"
+                                            ng-attr-d="{{bar.pathD}}"
+                                        )
+                                            title {{ bar.label }}

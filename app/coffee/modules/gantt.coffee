@@ -181,8 +181,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         rootStoryNodes = []
         rootTaskNodes = []
 
-        _.each(epicNodes, (epicNode) ->
+        _.each(epicNodes, (epicNode) =>
             epicNodesById["#{epicNode.item.id}"] = epicNode
+            epicNode.barColor = @_extractEpicColor(epicNode.item)
         )
 
         storyNodesById = {}
@@ -195,8 +196,10 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             parentEpic = epicNodesById["#{epicId}"]
 
             if parentEpic?
+                storyNode.barColor = parentEpic.barColor or @_extractStoryEpicColor(story, epicNodesById)
                 parentEpic.children.push(storyNode)
             else
+                storyNode.barColor = @_extractStoryEpicColor(story, epicNodesById) or @_getNoEpicBarColor()
                 rootStoryNodes.push(storyNode)
         )
 
@@ -206,8 +209,10 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             parentStory = storyNodesById["#{storyId}"]
 
             if parentStory?
+                taskNode.barColor = parentStory.barColor or @_getNoEpicBarColor()
                 parentStory.children.push(taskNode)
             else
+                taskNode.barColor = @_getNoEpicBarColor()
                 rootTaskNodes.push(taskNode)
         )
 
@@ -238,6 +243,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             progressValue: progressValue
             progressLabel: "#{progressValue}%"
             canEdit: @_canModifyType(type)
+            barColor: null
             children: []
             isPlaceholder: false
         }
@@ -293,6 +299,48 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             return normalizedEpicInfoId if normalizedEpicInfoId?
 
         return null
+
+    _normalizeColorValue: (colorValue) ->
+        return null if !colorValue?
+
+        rawColor = "#{colorValue}".trim()
+        return null if !rawColor.length
+
+        return rawColor if /^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(rawColor)
+        return "##{rawColor}" if /^[0-9a-f]{3}([0-9a-f]{3})?$/i.test(rawColor)
+        return rawColor if /^(rgb|hsl)a?\(/i.test(rawColor)
+        return rawColor if /^[a-z]+$/i.test(rawColor)
+
+        return null
+
+    _extractEpicColor: (epic) ->
+        return null if !epic?
+        return @_normalizeColorValue(epic.color)
+
+    _extractStoryEpicColor: (story, epicNodesById = {}) ->
+        return null if !story?
+
+        epicId = @_extractEpicId(story, epicNodesById)
+        if epicId?
+            mappedEpic = epicNodesById["#{epicId}"]
+            mappedEpicColor = @_extractEpicColor(mappedEpic?.item)
+            return mappedEpicColor if mappedEpicColor?
+
+        directEpicColor = @_normalizeColorValue(story.epic?.color)
+        return directEpicColor if directEpicColor?
+
+        epicInfoColor = @_normalizeColorValue(story.epic_extra_info?.color)
+        return epicInfoColor if epicInfoColor?
+
+        if _.isArray(story.epics)
+            for epic in story.epics
+                color = @_normalizeColorValue(epic?.color)
+                return color if color?
+
+        return null
+
+    _getNoEpicBarColor: ->
+        return "rgb(112, 114, 143)"
 
     _extractStoryId: (task) ->
         return null if !task?
@@ -630,6 +678,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 endDay: endDay
                 label: row.label
                 canEdit: !!row.canEdit
+                style: if row.barColor? then {fill: row.barColor} else {}
             }
 
             if shape == "rounded"

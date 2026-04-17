@@ -38,11 +38,36 @@
 
     .gantt-workspace {
         --gantt-visible-rows: 1;
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 0;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .gantt-toolbar {
+        background: $color-white;
+        border: 1px solid $color-gray200;
+        border-radius: 4px 4px 0 0;
+        flex: 0 0 2.5rem;
+        min-height: 2.5rem;
+    }
+
+    .gantt-toolbar-inner {
+        align-items: center;
+        display: flex;
+        gap: .5rem;
+        height: 100%;
+        min-width: 0;
+        padding: 0 .75rem;
+    }
+
+    .gantt-panels {
         align-items: stretch;
         display: flex;
         flex: 1 1 auto;
         flex-wrap: nowrap;
-        gap: 0;
         min-height: 0;
         overflow: hidden;
     }
@@ -51,7 +76,8 @@
         background: $color-white;
         border: 1px solid $color-gray200;
         border-inline-end: 0;
-        border-radius: 4px 0 0 4px;
+        border-radius: 0 0 0 4px;
+        border-top: 0;
         flex: 0 0 var(--gantt-left-panel-width);
         height: 100%;
         min-width: 0;
@@ -62,7 +88,8 @@
 
     .gantt-panel-resizer {
         background: $color-white;
-        border-block: 1px solid $color-gray200;
+        border-block-end: 1px solid $color-gray200;
+        border-block-start: 0;
         border-inline: 1px solid $color-gray200;
         cursor: col-resize;
         flex: 0 0 var(--gantt-panel-resizer-width);
@@ -214,6 +241,22 @@
         width: 1rem;
     }
 
+    .gantt-row-type-icon {
+        align-items: center;
+        color: $color-link-tertiary;
+        display: inline-flex;
+        flex: 0 0 1rem;
+        justify-content: center;
+        margin-inline-end: .2rem;
+        width: 1rem;
+
+        svg {
+            display: block;
+            height: 1.9rem;
+            width: 1.9rem;
+        }
+    }
+
     .gantt-chevron {
         align-items: center;
         display: inline-flex;
@@ -358,7 +401,8 @@
         background: $color-white;
         border: 1px solid $color-gray200;
         border-inline-start: 0;
-        border-radius: 0 4px 4px 0;
+        border-radius: 0 0 4px 0;
+        border-top: 0;
         flex: 1;
         height: 100%;
         min-width: 0;
