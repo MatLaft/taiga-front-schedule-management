@@ -1343,11 +1343,33 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @repo.save(row.item, true, {include_schedule: true}).then =>
             @savingKey = null
             return
-        , =>
+        , (errorData) =>
             row.item.revert()
             @savingKey = null
-            @confirm.notify("error")
+            message = @_extractApiErrorMessage(errorData)
+            @confirm.notify("error", message)
             return @q.reject()
+
+    _extractApiErrorMessage: (errorData) ->
+        payload = errorData?.data or errorData
+        return null if !payload?
+
+        if _.isString(payload._error_message) and payload._error_message.length
+            return payload._error_message
+
+        if _.isArray(payload.__all__) and payload.__all__.length
+            return payload.__all__[0]
+
+        for own key, value of payload
+            continue if key == "_error_message" or key == "__all__"
+
+            if _.isArray(value) and value.length
+                return value[0]
+
+            if _.isString(value) and value.length
+                return value
+
+        return null
 
     _normalizeDateForInput: (dateValue) ->
         return null if !dateValue
