@@ -317,31 +317,112 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return @q.when() if currentStartValue == nextStartValue and currentDueValue == nextDueValue
 
+        affectedEntities = @_collectAffectedEntitiesForDateSave(row)
+
         row.item.setAttr(startField, nextStartValue)
         row.item.setAttr("due_date", nextDueValue)
         @savingRows[rowId] = true
 
         return @repo.save(row.item, true, {include_schedule: true}).then =>
             delete @savingRows[rowId]
-
-            savedStartMoment = @_extractStartMoment(row.item)
-            savedDueMoment = @_extractDueMoment(row.item, savedStartMoment)
-
-            row.startMoment = savedStartMoment
-            row.dueMoment = savedDueMoment
-            row.startLabel = @_formatDateShort(savedStartMoment)
-            row.dueLabel = @_formatDateShort(savedDueMoment)
-
-            @timelineStartAnchor = null
-            @_refreshComputedData()
-            @scope.$evalAsync()
-            @confirm.notify("success")
-            return
+            return @_reloadDateAffectedEntities(affectedEntities).then =>
+                @confirm.notify("success")
+                return
+            , =>
+                @timelineStartAnchor = null
+                @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
+                @scope.$evalAsync()
+                @confirm.notify("success")
+                return
         , =>
             row.item.revert()
             delete @savingRows[rowId]
             @confirm.notify("error")
             return @q.reject()
+
+    _collectAffectedEntitiesForDateSave: (row) ->
+        affected = {
+            taskId: null
+            storyId: null
+            epicId: null
+        }
+
+        return affected if !row?.item?
+
+        rowItemId = @_normalizeId(row.item.id)
+        rowType = row.type
+
+        if rowType == "epic"
+            affected.epicId = rowItemId
+            return affected
+
+        if rowType == "story"
+            affected.storyId = rowItemId
+            affected.epicId = @_normalizeId(row.epicId)
+            return affected
+
+        if rowType == "task"
+            affected.taskId = rowItemId
+            affected.storyId = @_normalizeId(@_extractStoryId(row.item))
+            affected.epicId = @_normalizeId(row.epicId)
+
+            if !affected.epicId? and affected.storyId?
+                storyRow = @rowNodesById["story-#{affected.storyId}"]
+                affected.epicId = @_normalizeId(storyRow?.epicId)
+
+        return affected
+
+    _upsertSourceEntity: (entityName, entityModel) ->
+        return if !entityModel?.id?
+
+        source = null
+        if entityName == "epics"
+            source = @sourceEpics
+        else if entityName == "userstories"
+            source = @sourceUserstories
+        else if entityName == "tasks"
+            source = @sourceTasks
+
+        return if !source?
+
+        normalizedEntityId = @_normalizeId(entityModel.id)
+        updated = false
+
+        for index in [0...source.length]
+            sourceItem = source[index]
+            continue if @_normalizeId(sourceItem?.id) != normalizedEntityId
+            source[index] = entityModel
+            updated = true
+            break
+
+        source.push(entityModel) if !updated
+
+    _reloadDateAffectedEntities: (affectedEntities) ->
+        requests = []
+
+        addRequest = (entityName, entityId) =>
+            normalizedId = @_normalizeId(entityId)
+            return if !normalizedId?
+
+            request = @repo.queryOne(entityName, normalizedId, {include_schedule: true}).then (entityModel) =>
+                @_upsertSourceEntity(entityName, entityModel)
+                return entityModel
+            , =>
+                return null
+
+            requests.push(request)
+
+        addRequest("tasks", affectedEntities?.taskId)
+        addRequest("userstories", affectedEntities?.storyId)
+        addRequest("epics", affectedEntities?.epicId)
+
+        reloadPromise = if requests.length then @q.all(requests) else @q.when([])
+
+        return reloadPromise.then =>
+            @timelineStartAnchor = null
+            @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
+            @scope.$evalAsync()
+            return
 
     _buildTree: (epics, userstories, tasks) ->
         epicNodes = _.map(@_sortById(epics), (epic) => @_buildNode("epic", epic))
