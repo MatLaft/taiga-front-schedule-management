@@ -47,9 +47,11 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @colorList = getDefaulColorList()
         @activeColorMenuRowId = null
         @nodeCustomColorByRowId = {}
+        @colorMenuOpenUpwardByRowId = {}
         @zoomMenuOpen = false
         @selectedZoomOption = "daily"
         @barsLocked = true
+        @colorPickerModeActive = false
         @barChangeUndoStack = []
         @barChangeRedoStack = []
         @barChangeHistoryLimit = 100
@@ -215,6 +217,56 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return false if !target?
         return @_canModifyType(target.type)
 
+    _openNodeColorMenu: (row) ->
+        return false if !row?.rowId?
+        return false if !@canEditNodeColor(row)
+
+        @activeColorMenuRowId = row.rowId
+        target = @_getTargetNodeForColorChange(row)
+        @nodeCustomColorByRowId[row.rowId] = @_normalizeColorValue(target?.item?.color)
+        @_updateColorMenuPlacement(row.rowId)
+        return true
+
+    _getClosestGanttRowIdFromTarget: (target) ->
+        node = target
+
+        while node?
+            if node.classList?.contains("gantt-tree-row")
+                rowId = node.getAttribute?("data-gantt-row-id")
+                return rowId if rowId?
+            node = node.parentNode
+
+        return null
+
+    isColorMenuOpenUpward: (rowId) ->
+        return !!@colorMenuOpenUpwardByRowId[rowId]
+
+    _updateColorMenuPlacement: (rowId) ->
+        return if !rowId?
+
+        _.defer =>
+            rowSelector = ".gantt-tree-row[data-gantt-row-id=\"#{rowId}\"]"
+            rowElement = document.querySelector(rowSelector)
+            iconElement = rowElement?.querySelector(".gantt-row-type-icon")
+            dropdownElement = rowElement?.querySelector(".gantt-row-color-dropdown")
+            leftPanel = document.querySelector(".gantt-left-panel")
+            shouldOpenUpward = false
+
+            if iconElement? and leftPanel?
+                iconRect = iconElement.getBoundingClientRect()
+                panelRect = leftPanel.getBoundingClientRect()
+                dropdownHeight = dropdownElement?.getBoundingClientRect()?.height or 0
+                dropdownHeight = 220 if dropdownHeight <= 0
+
+                availableBelow = panelRect.bottom - iconRect.bottom
+                availableAbove = iconRect.top - panelRect.top
+                shouldOpenUpward = dropdownHeight + 8 > availableBelow and availableAbove > availableBelow
+
+            return if !!@colorMenuOpenUpwardByRowId[rowId] == shouldOpenUpward
+
+            @colorMenuOpenUpwardByRowId[rowId] = shouldOpenUpward
+            @scope.$evalAsync()
+
     isNodeColorMenuOpen: (rowId) ->
         return @activeColorMenuRowId == rowId
 
@@ -240,6 +292,19 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return true if @_canModifyType("story")
         return true if @_canModifyType("task")
         return false
+
+    canUseColorPickerMode: ->
+        return @canToggleBarsLock()
+
+    toggleColorPickerMode: (event) ->
+        @stopToolbarMenuEvent(event)
+        return if !@canUseColorPickerMode()
+
+        @colorPickerModeActive = !@colorPickerModeActive
+
+        if !@colorPickerModeActive
+            delete @colorMenuOpenUpwardByRowId[@activeColorMenuRowId] if @activeColorMenuRowId?
+            @activeColorMenuRowId = null
 
     toggleBarsLock: (event) ->
         @stopToolbarMenuEvent(event)
@@ -427,9 +492,19 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         shouldRefreshScope = false
 
         target = event?.target
+        handledColorPickerRowClick = false
+        clickedRowId = @_getClosestGanttRowIdFromTarget(target)
+
+        if @colorPickerModeActive and clickedRowId?
+            clickedRow = @rowNodesById[clickedRowId]
+            handledColorPickerRowClick = @_openNodeColorMenu(clickedRow)
+            if handledColorPickerRowClick
+                event?.preventDefault()
+                shouldRefreshScope = true
 
         if @activeColorMenuRowId?
-            if !@_hasAncestorWithClass(target, "gantt-row-type-icon")
+            if !@_hasAncestorWithClass(target, "gantt-row-type-icon") and !handledColorPickerRowClick
+                delete @colorMenuOpenUpwardByRowId[@activeColorMenuRowId] if @activeColorMenuRowId?
                 @activeColorMenuRowId = null
                 shouldRefreshScope = true
 
@@ -442,15 +517,15 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     toggleNodeColorMenu: (event, row) ->
         @stopColorMenuEvent(event)
-        return if !@canEditNodeColor(row)
+        return if !row?.rowId?
+        return if !@colorPickerModeActive
 
         if @activeColorMenuRowId == row?.rowId
+            delete @colorMenuOpenUpwardByRowId[row.rowId]
             @activeColorMenuRowId = null
             return
 
-        @activeColorMenuRowId = row.rowId
-        target = @_getTargetNodeForColorChange(row)
-        @nodeCustomColorByRowId[row.rowId] = @_normalizeColorValue(target?.item?.color)
+        @_openNodeColorMenu(row)
 
     onNodeColorInputKeyDown: (event, row) ->
         return if !event?
@@ -500,6 +575,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             )
 
             @activeColorMenuRowId = null
+            delete @colorMenuOpenUpwardByRowId[row?.rowId] if row?.rowId?
             @timelineStartAnchor = null
             @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
             @scope.$evalAsync()

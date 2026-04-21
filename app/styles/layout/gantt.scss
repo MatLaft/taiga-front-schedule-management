@@ -73,7 +73,12 @@
         gap: .35rem;
     }
 
+    .gantt-toolbar-color-picker {
+        display: flex;
+    }
+
     .gantt-toolbar-history-button,
+    .gantt-toolbar-color-picker-button,
     .gantt-toolbar-zoom-button,
     .gantt-toolbar-lock-button {
         align-items: center;
@@ -121,6 +126,18 @@
             background: rgba($color-link-primary, .12);
             color: $color-link-primary;
         }
+    }
+
+    .gantt-toolbar-color-picker-button.is-active {
+        background: rgba($color-link-primary, .12);
+        color: $color-link-primary;
+    }
+
+    .gantt-toolbar-color-picker-button:focus,
+    .gantt-toolbar-color-picker-button:focus-visible {
+        border-color: transparent;
+        box-shadow: none;
+        outline: 0;
     }
 
     .gantt-toolbar-zoom-button {
@@ -394,6 +411,12 @@
             outline: 0;
         }
 
+        &:disabled {
+            cursor: default;
+            opacity: 1;
+            pointer-events: none;
+        }
+
         &.is-disabled {
             cursor: default;
             opacity: .7;
@@ -418,6 +441,11 @@
         position: absolute;
         top: 1.8rem;
         z-index: 12;
+    }
+
+    .gantt-tree-row.color-menu-upward .gantt-row-color-dropdown {
+        bottom: 1.8rem;
+        top: auto;
     }
 
     .gantt-chevron {
@@ -800,6 +828,7 @@
         border-radius: 4px;
         box-shadow: 4px 4px 8px rgba($color-black, .12);
         color: $color-gray800;
+        display: none;
         font-size: .875rem;
         font-weight: 500;
         line-height: 1.35;
@@ -813,6 +842,7 @@
     }
 
     .gantt-bar-resize-popup.is-visible {
+        display: block;
         opacity: 1;
     }
 

@@ -48,6 +48,20 @@ div.wrapper.gantt(
                                 path(stroke="none" d="M0 0h24v24H0z" fill="none")
                                 path(d="M15 14l4 -4l-4 -4")
                                 path(d="M19 10h-11a4 4 0 1 0 0 8h1")
+                    .gantt-toolbar-color-picker
+                        button.gantt-toolbar-color-picker-button(
+                            type="button"
+                            ng-class="{'is-active': ctrl.colorPickerModeActive}"
+                            ng-click="ctrl.toggleColorPickerMode($event)"
+                            ng-mousedown="ctrl.stopToolbarMenuEvent($event)"
+                            ng-disabled="!ctrl.canUseColorPickerMode()"
+                            ng-attr-aria-label="{{ctrl.colorPickerModeActive ? 'Disable color picker mode' : 'Enable color picker mode'}}"
+                            ng-attr-title="{{ctrl.colorPickerModeActive ? 'Disable color picker mode' : 'Enable color picker mode'}}"
+                        )
+                            svg(xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-color-picker")
+                                path(stroke="none" d="M0 0h24v24H0z" fill="none")
+                                path(d="M11 7l6 6")
+                                path(d="M4 16l11.7 -11.7a1 1 0 0 1 1.4 0l2.6 2.6a1 1 0 0 1 0 1.4l-11.7 11.7h-4v-4")
                     .gantt-toolbar-zoom(ng-class="{'is-open': ctrl.zoomMenuOpen}")
                         button.gantt-toolbar-zoom-button(
                             type="button"
@@ -189,7 +203,7 @@ div.wrapper.gantt(
                                     checked="checked"
                                 )
                                 label.gantt-tree-row.gantt-row.gantt-row-epic(
-                                    ng-class="{'is-collapsible': node.children.length, 'has-color-menu-open': ctrl.isNodeColorMenuOpen(node.rowId)}"
+                                    ng-class="{'is-collapsible': node.children.length, 'has-color-menu-open': ctrl.isNodeColorMenuOpen(node.rowId), 'color-menu-upward': ctrl.isColorMenuOpenUpward(node.rowId)}"
                                     ng-attr-for="{{node.children.length ? node.inputId : ('gantt-noop-' + node.rowId)}}"
                                     ng-attr-data-gantt-row-id="{{node.rowId}}"
                                 )
@@ -201,6 +215,7 @@ div.wrapper.gantt(
                                                 button.gantt-row-type-button(
                                                     type="button"
                                                     ng-class="{'is-open': ctrl.isNodeColorMenuOpen(node.rowId), 'is-disabled': !ctrl.canEditNodeColor(node)}"
+                                                    ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(node)"
                                                     ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                     ng-click="ctrl.toggleNodeColorMenu($event, node)"
                                                     aria-label="Choose color"
@@ -257,7 +272,7 @@ div.wrapper.gantt(
                                             checked="checked"
                                         )
                                         label.gantt-tree-row.gantt-row.gantt-row-story(
-                                            ng-class="{'is-collapsible': story.children.length, 'has-color-menu-open': ctrl.isNodeColorMenuOpen(story.rowId)}"
+                                            ng-class="{'is-collapsible': story.children.length, 'has-color-menu-open': ctrl.isNodeColorMenuOpen(story.rowId), 'color-menu-upward': ctrl.isColorMenuOpenUpward(story.rowId)}"
                                             ng-attr-for="{{story.children.length ? story.inputId : ('gantt-noop-' + story.rowId)}}"
                                             ng-attr-data-gantt-row-id="{{story.rowId}}"
                                         )
@@ -269,6 +284,7 @@ div.wrapper.gantt(
                                                         button.gantt-row-type-button(
                                                             type="button"
                                                             ng-class="{'is-open': ctrl.isNodeColorMenuOpen(story.rowId), 'is-disabled': !ctrl.canEditNodeColor(story)}"
+                                                            ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(story)"
                                                             ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                             ng-click="ctrl.toggleNodeColorMenu($event, story)"
                                                             aria-label="Choose color"
@@ -321,7 +337,7 @@ div.wrapper.gantt(
                                         .gantt-tree-children(ng-if="story.children.length")
                                             .gantt-tree-row.gantt-row.gantt-row-task(
                                                 ng-repeat="task in story.children track by task.rowId"
-                                                ng-class="{'has-color-menu-open': ctrl.isNodeColorMenuOpen(task.rowId)}"
+                                                ng-class="{'has-color-menu-open': ctrl.isNodeColorMenuOpen(task.rowId), 'color-menu-upward': ctrl.isColorMenuOpenUpward(task.rowId)}"
                                                 ng-attr-data-gantt-row-id="{{task.rowId}}"
                                             )
                                                 span.gantt-col-title(ng-attr-title="{{task.item.subject || task.item.name || '-'}}")
@@ -330,6 +346,7 @@ div.wrapper.gantt(
                                                             button.gantt-row-type-button(
                                                                 type="button"
                                                                 ng-class="{'is-open': ctrl.isNodeColorMenuOpen(task.rowId), 'is-disabled': !ctrl.canEditNodeColor(task)}"
+                                                                ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(task)"
                                                                 ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                                 ng-click="ctrl.toggleNodeColorMenu($event, task)"
                                                                 aria-label="Choose color"
@@ -386,7 +403,7 @@ div.wrapper.gantt(
                                     checked="checked"
                                 )
                                 label.gantt-tree-row.gantt-row.gantt-row-story.gantt-row-story-root(
-                                    ng-class="{'is-collapsible': node.children.length, 'has-color-menu-open': ctrl.isNodeColorMenuOpen(node.rowId)}"
+                                    ng-class="{'is-collapsible': node.children.length, 'has-color-menu-open': ctrl.isNodeColorMenuOpen(node.rowId), 'color-menu-upward': ctrl.isColorMenuOpenUpward(node.rowId)}"
                                     ng-attr-for="{{node.children.length ? node.inputId : ('gantt-noop-' + node.rowId)}}"
                                     ng-attr-data-gantt-row-id="{{node.rowId}}"
                                 )
@@ -398,6 +415,7 @@ div.wrapper.gantt(
                                                 button.gantt-row-type-button(
                                                     type="button"
                                                     ng-class="{'is-open': ctrl.isNodeColorMenuOpen(node.rowId), 'is-disabled': !ctrl.canEditNodeColor(node)}"
+                                                    ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(node)"
                                                     ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                     ng-click="ctrl.toggleNodeColorMenu($event, node)"
                                                     aria-label="Choose color"
@@ -450,7 +468,7 @@ div.wrapper.gantt(
                                 .gantt-tree-children(ng-if="node.children.length")
                                     .gantt-tree-row.gantt-row.gantt-row-task(
                                         ng-repeat="task in node.children track by task.rowId"
-                                        ng-class="{'has-color-menu-open': ctrl.isNodeColorMenuOpen(task.rowId)}"
+                                        ng-class="{'has-color-menu-open': ctrl.isNodeColorMenuOpen(task.rowId), 'color-menu-upward': ctrl.isColorMenuOpenUpward(task.rowId)}"
                                         ng-attr-data-gantt-row-id="{{task.rowId}}"
                                     )
                                         span.gantt-col-title(ng-attr-title="{{task.item.subject || task.item.name || '-'}}")
@@ -459,6 +477,7 @@ div.wrapper.gantt(
                                                     button.gantt-row-type-button(
                                                         type="button"
                                                         ng-class="{'is-open': ctrl.isNodeColorMenuOpen(task.rowId), 'is-disabled': !ctrl.canEditNodeColor(task)}"
+                                                        ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(task)"
                                                         ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                         ng-click="ctrl.toggleNodeColorMenu($event, task)"
                                                         aria-label="Choose color"
@@ -509,7 +528,7 @@ div.wrapper.gantt(
 
                             .gantt-tree-row.gantt-row.gantt-row-task.gantt-row-task-root(
                                 ng-switch-when="task"
-                                ng-class="{'has-color-menu-open': ctrl.isNodeColorMenuOpen(node.rowId)}"
+                                ng-class="{'has-color-menu-open': ctrl.isNodeColorMenuOpen(node.rowId), 'color-menu-upward': ctrl.isColorMenuOpenUpward(node.rowId)}"
                                 ng-attr-data-gantt-row-id="{{node.rowId}}"
                             )
                                 span.gantt-col-title(ng-attr-title="{{node.item.subject || node.item.name || '-'}}")
@@ -518,6 +537,7 @@ div.wrapper.gantt(
                                             button.gantt-row-type-button(
                                                 type="button"
                                                 ng-class="{'is-open': ctrl.isNodeColorMenuOpen(node.rowId), 'is-disabled': !ctrl.canEditNodeColor(node)}"
+                                                ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(node)"
                                                 ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                 ng-click="ctrl.toggleNodeColorMenu($event, node)"
                                                 aria-label="Choose color"
