@@ -526,6 +526,12 @@ div.wrapper.gantt(
                         .gantt-timeline-grid(
                             ng-style="ctrl.timeline.gridStyle"
                         )
+                            .gantt-grid-columns(
+                                ng-style="ctrl.timeline.dayColumnsStyle"
+                            )
+                                .gantt-grid-column(
+                                    ng-repeat="day in ctrl.timeline.days track by day.key"
+                                )
                             .gantt-bars-layer
                                 svg.gantt-bars-svg(
                                     ng-style="ctrl.timeline.svgStyle"

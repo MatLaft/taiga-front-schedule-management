@@ -30,6 +30,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @scope.sectionName = "PROJECT.SECTION.GANTT"
         @dayWidthRem = 2.2
         @weekWidthRem = 7
+        @monthDayWidthRem = 0.35
 
         @loading = false
         @loadingError = false
@@ -247,11 +248,13 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         validOptions = ["daily", "weekly", "monthly"]
         return if validOptions.indexOf(option) == -1
 
-        changed = @selectedZoomOption != option
+        if @selectedZoomOption == option
+            event?.preventDefault()
+            @scope.$evalAsync()
+            return
+
         @selectedZoomOption = option
         @_persistZoomOption()
-
-        return if !changed
 
         @timelineStartAnchor = null
         @_refreshComputedData()
@@ -259,20 +262,27 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     _getTimelineScale: ->
         return "weekly" if @selectedZoomOption == "weekly"
+        return "monthly" if @selectedZoomOption == "monthly"
         return "daily"
 
     _getColumnWidthRem: (scale = @_getTimelineScale()) ->
         return @weekWidthRem if scale == "weekly"
+        return @monthDayWidthRem * 30 if scale == "monthly"
         return @dayWidthRem
 
     _getTimelineSlotWidthRem: (scale = @_getTimelineScale()) ->
         columnWidthRem = @_getColumnWidthRem(scale)
         return (columnWidthRem / 7) if scale == "weekly"
+        return @monthDayWidthRem if scale == "monthly"
         return columnWidthRem
 
     _getWeeklyRangeLabel: (startMoment, endMoment) ->
         return "" if !startMoment? or !endMoment?
         return "#{startMoment.date()} - #{endMoment.date()}"
+
+    _getMonthlyLabel: (startMoment) ->
+        return "" if !startMoment?
+        return startMoment.format("MMMM")
 
     _hasAncestorWithClass: (target, className) ->
         node = target
@@ -882,25 +892,98 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return rows
 
-    _buildTimelineMonths: (columns, columnWidthRem) ->
+    _formatRemValue: (value) ->
+        parsed = parseFloat(value)
+        parsed = 0 if isNaN(parsed)
+        return "#{Math.round(parsed * 10000) / 10000}"
+
+    _getTimelineColumnSlotCount: (column) ->
+        slotCount = parseInt(column?.slotCount, 10)
+        if !isNaN(slotCount) and slotCount > 0
+            return slotCount
+
+        if column?.startMoment? and column?.endMoment?
+            slotCount = column.endMoment.diff(column.startMoment, "days") + 1
+            return Math.max(1, slotCount)
+
+        return 1
+
+    _getTimelineColumnWidthRem: (column, fallbackColumnWidthRem) ->
+        widthRem = parseFloat(column?.widthRem)
+        if !isNaN(widthRem) and widthRem > 0
+            return widthRem
+
+        fallbackWidthRem = parseFloat(fallbackColumnWidthRem)
+        if !isNaN(fallbackWidthRem) and fallbackWidthRem > 0
+            return fallbackWidthRem
+
+        return @dayWidthRem
+
+    _getTimelineTotalSlots: (columns) ->
+        totalSlots = 0
+
+        _.each(columns or [], (column) =>
+            totalSlots += @_getTimelineColumnSlotCount(column)
+        )
+
+        return Math.max(totalSlots, 1)
+
+    _getTimelineWidthRem: (columns, fallbackColumnWidthRem) ->
+        widthRem = 0
+
+        _.each(columns or [], (column) =>
+            widthRem += @_getTimelineColumnWidthRem(column, fallbackColumnWidthRem)
+        )
+
+        return Math.max(widthRem, @_getTimelineColumnWidthRem(null, fallbackColumnWidthRem))
+
+    _buildTimelineColumnsStyle: (columns, timelineWidthRem, fallbackColumnWidthRem) ->
+        columnWidths = _.map(columns or [], (column) =>
+            return @_formatRemValue(@_getTimelineColumnWidthRem(column, fallbackColumnWidthRem))
+        )
+
+        if !columnWidths.length
+            fallbackWidthRem = @_formatRemValue(@_getTimelineColumnWidthRem(null, fallbackColumnWidthRem))
+            return {
+                "grid-template-columns": "repeat(1, #{fallbackWidthRem}rem)"
+                width: "#{fallbackWidthRem}rem"
+            }
+
+        hasUniformWidth = _.every(columnWidths, (width) ->
+            return width == columnWidths[0]
+        )
+
+        templateColumns = if hasUniformWidth
+            "repeat(#{columnWidths.length}, #{columnWidths[0]}rem)"
+        else
+            _.map(columnWidths, (width) -> "#{width}rem").join(" ")
+
+        return {
+            "grid-template-columns": templateColumns
+            width: "#{@_formatRemValue(timelineWidthRem)}rem"
+        }
+
+    _buildTimelineMonths: (columns, fallbackColumnWidthRem) ->
         months = []
         currentMonth = null
 
         _.each(columns or [], (column) =>
             monthKey = column.monthKey or column.startMoment?.format("YYYY-MM")
             monthLabel = column.monthLabel or column.startMoment?.format("MMM YYYY") or "-"
+            columnWidthRem = @_getTimelineColumnWidthRem(column, fallbackColumnWidthRem)
+            columnSlotCount = @_getTimelineColumnSlotCount(column)
 
             if !currentMonth? or currentMonth.key != monthKey
                 currentMonth = {
                     key: monthKey or "month-#{months.length}"
                     label: monthLabel
-                    days: 1
+                    days: columnSlotCount
                     widthRem: columnWidthRem
                 }
                 months.push(currentMonth)
                 return
 
-            currentMonth.days += 1
+            currentMonth.days += columnSlotCount
             currentMonth.widthRem += columnWidthRem
         )
 
@@ -940,14 +1023,28 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         columnEnd = now.clone()
         dayLabel = now.date()
         dayKey = now.format("YYYY-MM-DD")
-        totalSlots = 1
+        slotCount = 1
+        columnWidthRem = widthRem
+        bandKey = columnStart.format("YYYY-MM")
+        bandLabel = columnStart.format("MMM YYYY")
 
         if scale == "weekly"
             columnStart = now.clone().startOf("isoWeek")
             columnEnd = columnStart.clone().add(6, "day")
             dayLabel = @_getWeeklyRangeLabel(columnStart, columnEnd)
             dayKey = columnStart.format("GGGG-[W]WW")
-            totalSlots = 7
+            slotCount = 7
+            bandKey = columnStart.format("YYYY-MM")
+            bandLabel = columnStart.format("MMM YYYY")
+        else if scale == "monthly"
+            columnStart = now.clone().startOf("month")
+            columnEnd = now.clone().endOf("month")
+            dayLabel = @_getMonthlyLabel(columnStart)
+            dayKey = columnStart.format("YYYY-MM")
+            slotCount = columnEnd.diff(columnStart, "days") + 1
+            columnWidthRem = slotCount * slotWidthRem
+            bandKey = columnStart.format("YYYY")
+            bandLabel = columnStart.format("YYYY")
 
         columns = [{
             key: dayKey
@@ -955,10 +1052,14 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             isToday: true
             startMoment: columnStart
             endMoment: columnEnd
-            monthKey: columnStart.format("YYYY-MM")
-            monthLabel: columnStart.format("MMM YYYY")
+            monthKey: bandKey
+            monthLabel: bandLabel
+            slotCount: slotCount
+            widthRem: columnWidthRem
         }]
         months = @_buildTimelineMonths(columns, widthRem)
+        totalSlots = @_getTimelineTotalSlots(columns)
+        timelineWidthRem = @_getTimelineWidthRem(columns, widthRem)
 
         return {
             start: columnStart.clone()
@@ -975,37 +1076,35 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             slotWidthRem: slotWidthRem
             totalDays: totalSlots
             rowCount: 1
-            timelineWidthRem: widthRem
+            timelineWidthRem: timelineWidthRem
             todayLineStyle: @_buildTodayLineStyle(columns, widthRem)
-            dayColumnsStyle: {
-                "grid-template-columns": "repeat(1, #{widthRem}rem)"
-                width: "#{widthRem}rem"
-            }
+            dayColumnsStyle: @_buildTimelineColumnsStyle(columns, timelineWidthRem, widthRem)
             gridStyle: {
-                width: "#{widthRem}rem"
-                backgroundSize: "#{widthRem}rem 100%, 100% 100%, 100% 100%"
+                width: "#{@_formatRemValue(timelineWidthRem)}rem"
             }
-            svgStyle: {width: "#{widthRem}rem", height: "100%"}
+            svgStyle: {width: "#{@_formatRemValue(timelineWidthRem)}rem", height: "100%"}
         }
 
-    _buildTodayLineStyle: (columns, columnWidthRem) ->
+    _buildTodayLineStyle: (columns, fallbackColumnWidthRem) ->
         return null if !columns?.length
 
         today = moment().startOf("day")
+        leftRem = 0
 
         for column, index in columns
             columnStart = column.startMoment
             columnEnd = column.endMoment or column.startMoment
+            columnWidthRem = @_getTimelineColumnWidthRem(column, fallbackColumnWidthRem)
             continue if !columnStart? or !columnEnd?
 
             isInsideColumn = !today.isBefore(columnStart, "day") and !today.isAfter(columnEnd, "day")
-            continue if !isInsideColumn
+            if isInsideColumn
+                return {
+                    left: "#{@_formatRemValue(leftRem)}rem"
+                    width: "#{@_formatRemValue(columnWidthRem)}rem"
+                }
 
-            leftRem = index * columnWidthRem
-            return {
-                left: "#{leftRem}rem"
-                width: "#{columnWidthRem}rem"
-            }
+            leftRem += columnWidthRem
 
         return null
 
@@ -1035,6 +1134,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         if scale == "weekly"
             computedStart = start.clone().startOf("isoWeek").subtract(1, "week")
+        else if scale == "monthly"
+            computedStart = start.clone().startOf("month").subtract(1, "month")
         else
             computedStart = start.clone().subtract(3, "day").startOf("day")
 
@@ -1062,9 +1163,35 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                     endMoment: weekEnd
                     monthKey: weekStart.format("YYYY-MM")
                     monthLabel: weekStart.format("MMM YYYY")
+                    slotCount: 7
+                    widthRem: columnWidthRem
                 })
 
                 weekCursor = weekStart.clone().add(7, "day")
+        else if scale == "monthly"
+            monthCursor = start.clone().startOf("month")
+
+            while monthCursor.isSameOrBefore(end, "month")
+                monthStart = monthCursor.clone().startOf("month")
+                monthEnd = monthCursor.clone().endOf("month")
+                visibleStart = if monthStart.isBefore(start, "day") then start.clone() else monthStart
+                visibleEnd = if monthEnd.isAfter(end, "day") then end.clone() else monthEnd
+                slotCount = visibleEnd.diff(visibleStart, "days") + 1
+                slotCount = Math.max(1, slotCount)
+
+                columns.push({
+                    key: monthCursor.format("YYYY-MM")
+                    label: @_getMonthlyLabel(monthCursor)
+                    isToday: !today.isBefore(visibleStart, "day") and !today.isAfter(visibleEnd, "day")
+                    startMoment: visibleStart
+                    endMoment: visibleEnd
+                    monthKey: monthCursor.format("YYYY")
+                    monthLabel: monthCursor.format("YYYY")
+                    slotCount: slotCount
+                    widthRem: slotCount * slotWidthRem
+                })
+
+                monthCursor.add(1, "month")
         else
             dayCursor = start.clone()
 
@@ -1078,6 +1205,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                     endMoment: dayMoment.clone()
                     monthKey: dayMoment.format("YYYY-MM")
                     monthLabel: dayMoment.format("MMM YYYY")
+                    slotCount: 1
+                    widthRem: columnWidthRem
                 })
 
                 dayCursor.add(1, "day")
@@ -1091,10 +1220,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             }
         )
 
-        totalColumns = Math.max(columns.length, 1)
-        totalDays = if scale == "weekly" then (totalColumns * 7) else totalColumns
+        totalDays = @_getTimelineTotalSlots(columns)
         rowCount = Math.max((rows or []).length, 1)
-        timelineWidthRem = totalDays * slotWidthRem
+        timelineWidthRem = @_getTimelineWidthRem(columns, columnWidthRem)
 
         return {
             start: start
@@ -1109,15 +1237,11 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             rowCount: rowCount
             timelineWidthRem: timelineWidthRem
             todayLineStyle: @_buildTodayLineStyle(columns, columnWidthRem)
-            dayColumnsStyle: {
-                "grid-template-columns": "repeat(#{totalColumns}, #{columnWidthRem}rem)"
-                width: "#{timelineWidthRem}rem"
-            }
+            dayColumnsStyle: @_buildTimelineColumnsStyle(columns, timelineWidthRem, columnWidthRem)
             gridStyle: {
-                width: "#{timelineWidthRem}rem"
-                backgroundSize: "#{columnWidthRem}rem 100%, 100% 100%, 100% 100%"
+                width: "#{@_formatRemValue(timelineWidthRem)}rem"
             }
-            svgStyle: {width: "#{timelineWidthRem}rem", height: "100%"}
+            svgStyle: {width: "#{@_formatRemValue(timelineWidthRem)}rem", height: "100%"}
         }
 
     _buildBars: (rows, timeline) ->

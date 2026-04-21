@@ -619,7 +619,6 @@
     .gantt-timeline-grid {
         background-color: $color-white;
         background-image:
-            linear-gradient(to right, $color-gray200 1px, transparent 1px),
             repeating-linear-gradient(
                 to bottom,
                 transparent 0,
@@ -634,12 +633,25 @@
                 transparent var(--gantt-row-height),
                 transparent calc(var(--gantt-row-height) * 2)
             );
-        background-repeat: repeat, repeat, repeat;
-        background-size: var(--gantt-column-width) 100%, 100% 100%, 100% 100%;
+        background-repeat: repeat, repeat;
+        background-size: 100% 100%, 100% 100%;
         height: calc(var(--gantt-visible-rows) * var(--gantt-row-height));
         min-height: calc(var(--gantt-visible-rows) * var(--gantt-row-height));
         position: relative;
         right: 1px;
+    }
+
+    .gantt-grid-columns {
+        display: grid;
+        inset: 0;
+        pointer-events: none;
+        position: absolute;
+        z-index: 0;
+    }
+
+    .gantt-grid-column {
+        border-right: 1px solid $color-gray200;
+        min-width: 0;
     }
 
     .gantt-bars-layer {
