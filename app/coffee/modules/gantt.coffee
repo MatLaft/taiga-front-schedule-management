@@ -29,6 +29,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         @scope.sectionName = "PROJECT.SECTION.GANTT"
         @dayWidthRem = 2.2
+        @weekWidthRem = 7
 
         @loading = false
         @loadingError = false
@@ -73,6 +74,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     loadInitialData: ->
         @loadProject()
+        @_restoreZoomOptionFromCookie()
         return @load()
 
     load: ->
@@ -224,6 +226,20 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @stopToolbarMenuEvent(event)
         @zoomMenuOpen = !@zoomMenuOpen
 
+    _getZoomCookieName: ->
+        return buildGanttCookieName("layout_zoom", @scope)
+
+    _persistZoomOption: ->
+        cookieName = @_getZoomCookieName()
+        writeGanttCookie(cookieName, @selectedZoomOption)
+
+    _restoreZoomOptionFromCookie: ->
+        cookieName = @_getZoomCookieName()
+        option = readGanttCookie(cookieName)
+        validOptions = ["daily", "weekly", "monthly"]
+        return if validOptions.indexOf(option) == -1
+        @selectedZoomOption = option
+
     selectZoomOption: (option, event) ->
         @stopToolbarMenuEvent(event)
         return if !option?
@@ -231,7 +247,32 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         validOptions = ["daily", "weekly", "monthly"]
         return if validOptions.indexOf(option) == -1
 
+        changed = @selectedZoomOption != option
         @selectedZoomOption = option
+        @_persistZoomOption()
+
+        return if !changed
+
+        @timelineStartAnchor = null
+        @_refreshComputedData()
+        @scope.$evalAsync()
+
+    _getTimelineScale: ->
+        return "weekly" if @selectedZoomOption == "weekly"
+        return "daily"
+
+    _getColumnWidthRem: (scale = @_getTimelineScale()) ->
+        return @weekWidthRem if scale == "weekly"
+        return @dayWidthRem
+
+    _getTimelineSlotWidthRem: (scale = @_getTimelineScale()) ->
+        columnWidthRem = @_getColumnWidthRem(scale)
+        return (columnWidthRem / 7) if scale == "weekly"
+        return columnWidthRem
+
+    _getWeeklyRangeLabel: (startMoment, endMoment) ->
+        return "" if !startMoment? or !endMoment?
+        return "#{startMoment.date()} - #{endMoment.date()}"
 
     _hasAncestorWithClass: (target, className) ->
         node = target
@@ -339,8 +380,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         normalizedStartDay = Math.max(1, parseInt(startDay, 10) or 1)
         normalizedEndDay = Math.max(normalizedStartDay, parseInt(endDay, 10) or normalizedStartDay)
 
-        startMoment = @timeline.start.clone().add(normalizedStartDay - 1, "days").startOf("day")
-        dueMoment = @timeline.start.clone().add(normalizedEndDay - 1, "days").startOf("day")
+        startMoment = @_getTimelineMomentBySlotIndex(normalizedStartDay)
+        dueMoment = @_getTimelineMomentBySlotIndex(normalizedEndDay)
+        return @q.reject() if !startMoment? or !dueMoment?
 
         startField = @_getStartEditableField(row.item)
         nextStartValue = startMoment.format("YYYY-MM-DD")
@@ -840,51 +882,139 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return rows
 
+    _buildTimelineMonths: (columns, columnWidthRem) ->
+        months = []
+        currentMonth = null
+
+        _.each(columns or [], (column) =>
+            monthKey = column.monthKey or column.startMoment?.format("YYYY-MM")
+            monthLabel = column.monthLabel or column.startMoment?.format("MMM YYYY") or "-"
+
+            if !currentMonth? or currentMonth.key != monthKey
+                currentMonth = {
+                    key: monthKey or "month-#{months.length}"
+                    label: monthLabel
+                    days: 1
+                    widthRem: columnWidthRem
+                }
+                months.push(currentMonth)
+                return
+
+            currentMonth.days += 1
+            currentMonth.widthRem += columnWidthRem
+        )
+
+        return months
+
+    _findTimelineSlotIndexForMoment: (targetMoment, timeline = @timeline) ->
+        totalSlots = parseInt(timeline?.totalDays, 10) or 1
+        totalSlots = Math.max(totalSlots, 1)
+        timelineStart = timeline?.start
+
+        return 1 if !timelineStart?
+        return 1 if !targetMoment?
+
+        normalizedMoment = targetMoment.clone().startOf("day")
+        slotIndex = normalizedMoment.diff(timelineStart, "days") + 1
+        slotIndex = Math.max(1, Math.min(totalSlots, slotIndex))
+        return slotIndex
+
+    _getTimelineMomentBySlotIndex: (slotIndex) ->
+        totalSlots = parseInt(@timeline?.totalDays, 10) or 1
+        totalSlots = Math.max(totalSlots, 1)
+        timelineStart = @timeline?.start
+        return null if !timelineStart?
+
+        normalizedIndex = parseInt(slotIndex, 10)
+        normalizedIndex = 1 if isNaN(normalizedIndex)
+        normalizedIndex = Math.max(1, Math.min(totalSlots, normalizedIndex))
+
+        return timelineStart.clone().add(normalizedIndex - 1, "day").startOf("day")
+
     _emptyTimeline: ->
+        scale = @_getTimelineScale()
         now = moment().startOf("day")
-        widthRem = @dayWidthRem
+        widthRem = @_getColumnWidthRem(scale)
+        slotWidthRem = @_getTimelineSlotWidthRem(scale)
+        columnStart = now.clone()
+        columnEnd = now.clone()
+        dayLabel = now.date()
+        dayKey = now.format("YYYY-MM-DD")
+        totalSlots = 1
+
+        if scale == "weekly"
+            columnStart = now.clone().startOf("isoWeek")
+            columnEnd = columnStart.clone().add(6, "day")
+            dayLabel = @_getWeeklyRangeLabel(columnStart, columnEnd)
+            dayKey = columnStart.format("GGGG-[W]WW")
+            totalSlots = 7
+
+        columns = [{
+            key: dayKey
+            label: dayLabel
+            isToday: true
+            startMoment: columnStart
+            endMoment: columnEnd
+            monthKey: columnStart.format("YYYY-MM")
+            monthLabel: columnStart.format("MMM YYYY")
+        }]
+        months = @_buildTimelineMonths(columns, widthRem)
 
         return {
-            start: now.clone()
-            end: now.clone()
-            months: [{
-                key: now.format("YYYY-MM")
-                label: now.format("MMM YYYY")
-                days: 1
-                widthRem: widthRem
-            }]
+            start: columnStart.clone()
+            end: columnEnd.clone()
+            months: months
             days: [{
-                key: now.format("YYYY-MM-DD")
-                label: now.date()
+                key: dayKey
+                label: dayLabel
                 isToday: true
             }]
-            totalDays: 1
+            columns: columns
+            scale: scale
+            columnWidthRem: widthRem
+            slotWidthRem: slotWidthRem
+            totalDays: totalSlots
             rowCount: 1
             timelineWidthRem: widthRem
-            todayLineStyle: @_buildTodayLineStyle(now.clone(), now.clone())
-            dayColumnsStyle: {"grid-template-columns": "repeat(1, #{widthRem}rem)"}
-            gridStyle: {width: "#{widthRem}rem"}
+            todayLineStyle: @_buildTodayLineStyle(columns, widthRem)
+            dayColumnsStyle: {
+                "grid-template-columns": "repeat(1, #{widthRem}rem)"
+                width: "#{widthRem}rem"
+            }
+            gridStyle: {
+                width: "#{widthRem}rem"
+                backgroundSize: "#{widthRem}rem 100%, 100% 100%, 100% 100%"
+            }
             svgStyle: {width: "#{widthRem}rem", height: "100%"}
         }
 
-    _buildTodayLineStyle: (startMoment, endMoment) ->
-        return null if !startMoment? or !endMoment?
+    _buildTodayLineStyle: (columns, columnWidthRem) ->
+        return null if !columns?.length
 
         today = moment().startOf("day")
-        return null if today.isBefore(startMoment, "day")
-        return null if today.isAfter(endMoment, "day")
 
-        dayOffset = today.diff(startMoment, "days")
-        leftRem = dayOffset * @dayWidthRem
+        for column, index in columns
+            columnStart = column.startMoment
+            columnEnd = column.endMoment or column.startMoment
+            continue if !columnStart? or !columnEnd?
 
-        return {
-            left: "#{leftRem}rem"
-            width: "#{@dayWidthRem}rem"
-        }
+            isInsideColumn = !today.isBefore(columnStart, "day") and !today.isAfter(columnEnd, "day")
+            continue if !isInsideColumn
+
+            leftRem = index * columnWidthRem
+            return {
+                left: "#{leftRem}rem"
+                width: "#{columnWidthRem}rem"
+            }
+
+        return null
 
     _buildTimeline: (rows) ->
         allDates = []
         today = moment().startOf("day")
+        scale = @_getTimelineScale()
+        columnWidthRem = @_getColumnWidthRem(scale)
+        slotWidthRem = @_getTimelineSlotWidthRem(scale)
 
         _.each(rows or [], (row) ->
             return if row.isPlaceholder
@@ -903,60 +1033,90 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             end = date.clone() if date.isAfter(end)
         )
 
-        computedStart = start.clone().subtract(3, "day").startOf("day")
+        if scale == "weekly"
+            computedStart = start.clone().startOf("isoWeek").subtract(1, "week")
+        else
+            computedStart = start.clone().subtract(3, "day").startOf("day")
+
         if !@timelineStartAnchor?
             @timelineStartAnchor = computedStart.clone()
 
         start = @timelineStartAnchor.clone()
-        end.endOf("month")
+        end = end.clone().endOf("month")
 
-        months = []
-        monthCursor = start.clone().startOf("month")
+        columns = []
 
-        while monthCursor.isSameOrBefore(end, "month")
-            monthStart = monthCursor.clone().startOf("month")
-            monthEnd = monthCursor.clone().endOf("month")
+        if scale == "weekly"
+            weekCursor = start.clone().startOf("day")
 
-            visibleStart = if monthStart.isBefore(start) then start.clone() else monthStart
-            visibleEnd = if monthEnd.isAfter(end) then end.clone() else monthEnd
-            visibleDays = visibleEnd.diff(visibleStart, "days") + 1
+            while weekCursor.isSameOrBefore(end, "day")
+                weekStart = weekCursor.clone()
+                weekEnd = weekStart.clone().add(6, "day")
+                weekEnd = end.clone() if weekEnd.isAfter(end, "day")
 
-            months.push({
-                key: monthCursor.format("YYYY-MM")
-                label: monthCursor.format("MMM YYYY")
-                days: visibleDays
-                widthRem: visibleDays * @dayWidthRem
-            })
+                columns.push({
+                    key: weekStart.format("GGGG-[W]WW")
+                    label: @_getWeeklyRangeLabel(weekStart, weekEnd)
+                    isToday: !today.isBefore(weekStart, "day") and !today.isAfter(weekEnd, "day")
+                    startMoment: weekStart
+                    endMoment: weekEnd
+                    monthKey: weekStart.format("YYYY-MM")
+                    monthLabel: weekStart.format("MMM YYYY")
+                })
 
-            monthCursor.add(1, "month")
+                weekCursor = weekStart.clone().add(7, "day")
+        else
+            dayCursor = start.clone()
 
-        days = []
-        dayCursor = start.clone()
+            while dayCursor.isSameOrBefore(end, "day")
+                dayMoment = dayCursor.clone()
+                columns.push({
+                    key: dayMoment.format("YYYY-MM-DD")
+                    label: dayMoment.date()
+                    isToday: dayMoment.isSame(today, "day")
+                    startMoment: dayMoment
+                    endMoment: dayMoment.clone()
+                    monthKey: dayMoment.format("YYYY-MM")
+                    monthLabel: dayMoment.format("MMM YYYY")
+                })
 
-        while dayCursor.isSameOrBefore(end, "day")
-            days.push({
-                key: dayCursor.format("YYYY-MM-DD")
-                label: dayCursor.date()
-                isToday: dayCursor.isSame(today, "day")
-            })
+                dayCursor.add(1, "day")
 
-            dayCursor.add(1, "day")
+        months = @_buildTimelineMonths(columns, columnWidthRem)
+        days = _.map(columns, (column) ->
+            return {
+                key: column.key
+                label: column.label
+                isToday: column.isToday
+            }
+        )
 
-        totalDays = Math.max(days.length, 1)
+        totalColumns = Math.max(columns.length, 1)
+        totalDays = if scale == "weekly" then (totalColumns * 7) else totalColumns
         rowCount = Math.max((rows or []).length, 1)
-        timelineWidthRem = totalDays * @dayWidthRem
+        timelineWidthRem = totalDays * slotWidthRem
 
         return {
             start: start
             end: end
             months: months
             days: days
+            columns: columns
+            scale: scale
+            columnWidthRem: columnWidthRem
+            slotWidthRem: slotWidthRem
             totalDays: totalDays
             rowCount: rowCount
             timelineWidthRem: timelineWidthRem
-            todayLineStyle: @_buildTodayLineStyle(start, end)
-            dayColumnsStyle: {"grid-template-columns": "repeat(#{totalDays}, #{@dayWidthRem}rem)"}
-            gridStyle: {width: "#{timelineWidthRem}rem"}
+            todayLineStyle: @_buildTodayLineStyle(columns, columnWidthRem)
+            dayColumnsStyle: {
+                "grid-template-columns": "repeat(#{totalColumns}, #{columnWidthRem}rem)"
+                width: "#{timelineWidthRem}rem"
+            }
+            gridStyle: {
+                width: "#{timelineWidthRem}rem"
+                backgroundSize: "#{columnWidthRem}rem 100%, 100% 100%, 100% 100%"
+            }
             svgStyle: {width: "#{timelineWidthRem}rem", height: "100%"}
         }
 
@@ -978,8 +1138,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             if barEndMoment.isBefore(barStartMoment)
                 barEndMoment = barStartMoment.clone()
 
-            startDay = barStartMoment.diff(timeline.start, "days") + 1
-            endDay = barEndMoment.diff(timeline.start, "days") + 1
+            startDay = @_findTimelineSlotIndexForMoment(barStartMoment, timeline)
+            endDay = @_findTimelineSlotIndexForMoment(barEndMoment, timeline)
             startDay = Math.max(1, startDay)
             endDay = Math.max(startDay, endDay)
 

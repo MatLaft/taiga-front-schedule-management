@@ -28,8 +28,8 @@ div.wrapper.gantt(
                             type="button"
                             ng-click="ctrl.toggleZoomMenu($event)"
                             ng-mousedown="ctrl.stopToolbarMenuEvent($event)"
-                            aria-label="Zoom options"
-                            title="Zoom options"
+                            ng-attr-aria-label="{{'PROJECT.GANTT.ZOOM_OPTIONS' | translate}}"
+                            ng-attr-title="{{'PROJECT.GANTT.ZOOM_OPTIONS' | translate}}"
                         )
                             svg(xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-zoom")
                                 path(stroke="none" d="M0 0h24v24H0z" fill="none")
@@ -46,21 +46,21 @@ div.wrapper.gantt(
                                     ng-checked="ctrl.selectedZoomOption == 'daily'"
                                     ng-click="ctrl.selectZoomOption('daily', $event)"
                                 )
-                                span Diario
+                                span(translate="PROJECT.GANTT.ZOOM.DAILY")
                             label.gantt-toolbar-zoom-option
                                 input(
                                     type="checkbox"
                                     ng-checked="ctrl.selectedZoomOption == 'weekly'"
                                     ng-click="ctrl.selectZoomOption('weekly', $event)"
                                 )
-                                span Semanal
+                                span(translate="PROJECT.GANTT.ZOOM.WEEKLY")
                             label.gantt-toolbar-zoom-option
                                 input(
                                     type="checkbox"
                                     ng-checked="ctrl.selectedZoomOption == 'monthly'"
                                     ng-click="ctrl.selectZoomOption('monthly', $event)"
                                 )
-                                span Mensal
+                                span(translate="PROJECT.GANTT.ZOOM.MONTHLY")
 
             .gantt-panels
                 aside.gantt-left-panel(tg-gantt-column-resize)

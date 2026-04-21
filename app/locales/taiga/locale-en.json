@@ -930,6 +930,14 @@
             "SCRUM": "Scrum",
             "COLLAPSE_MENU": "collapse menu"
         },
+        "GANTT": {
+            "ZOOM_OPTIONS": "Zoom options",
+            "ZOOM": {
+                "DAILY": "Daily",
+                "WEEKLY": "Weekly",
+                "MONTHLY": "Monthly"
+            }
+        },
         "NAVIGATION": {
             "PROJECTS": "Projects",
             "ACCOUNT_SETTINGS": "Account settings",

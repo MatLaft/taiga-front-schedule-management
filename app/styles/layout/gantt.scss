@@ -10,6 +10,7 @@
     --gantt-col-progress: 6rem;
     --gantt-left-panel-width: 42%;
     --gantt-panel-resizer-width: .9rem;
+    --gantt-column-width: 2.2rem;
     --gantt-table-width:
         calc(
             var(--gantt-col-item) +
@@ -634,7 +635,7 @@
                 transparent calc(var(--gantt-row-height) * 2)
             );
         background-repeat: repeat, repeat, repeat;
-        background-size: 2.2rem 100%, 100% 100%, 100% 100%;
+        background-size: var(--gantt-column-width) 100%, 100% 100%, 100% 100%;
         height: calc(var(--gantt-visible-rows) * var(--gantt-row-height));
         min-height: calc(var(--gantt-visible-rows) * var(--gantt-row-height));
         position: relative;
