@@ -334,6 +334,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     _buildBarChangeHistoryEntry: (rowId, startField, previousStart, previousDue, nextStart, nextDue) ->
         return {
+            type: "dates"
             rowId: rowId
             startField: startField
             previous: {
@@ -346,8 +347,30 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             }
         }
 
+    _buildColorChangeHistoryEntry: (targetRowId, previousColor, nextColor) ->
+        return {
+            type: "color"
+            targetRowId: targetRowId
+            previousColor: previousColor or null
+            nextColor: nextColor or null
+        }
+
+    _applyColorChangeHistoryEntry: (entry, direction) ->
+        return @q.reject() if !entry?
+
+        targetRow = @rowNodesById[entry.targetRowId]
+        return @q.reject() if !targetRow?
+
+        targetColor = if direction == "undo" then entry.previousColor else entry.nextColor
+        return @selectNodeColor(null, targetRow, targetColor, {
+            skipHistory: true
+            notify: false
+            allowNull: true
+        })
+
     _applyBarChangeHistoryEntry: (entry, direction) ->
         return @q.reject() if !entry?
+        return @_applyColorChangeHistoryEntry(entry, direction) if entry.type == "color"
 
         targetState = if direction == "undo" then entry.previous else entry.next
         return @q.reject() if !targetState?
@@ -547,12 +570,16 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @q.when() if !typedColor? or typedColor == currentColor
         return @selectNodeColor(null, row, typedColor)
 
-    selectNodeColor: (event, row, color) ->
+    selectNodeColor: (event, row, color, options = {}) ->
         @stopColorMenuEvent(event)
         return @q.when() if !row?
+        return @q.reject() if @barHistoryBusy and !options.skipHistory
 
-        normalizedColor = @_normalizeColorValue(color)
-        return @q.when() if !normalizedColor?
+        hasColorValue = color? and "#{color}".trim().length > 0
+        normalizedColor = if hasColorValue then @_normalizeColorValue(color) else null
+
+        return @q.when() if hasColorValue and !normalizedColor?
+        return @q.when() if !normalizedColor? and !options.allowNull
 
         target = @_getTargetNodeForColorChange(row)
         return @q.reject() if !target?
@@ -560,6 +587,14 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         currentColor = @_normalizeColorValue(target.item?.color)
         return @q.when() if currentColor == normalizedColor
+
+        historyEntry = null
+        if !options.skipHistory and target.row?.rowId?
+            historyEntry = @_buildColorChangeHistoryEntry(
+                target.row?.rowId
+                currentColor
+                normalizedColor
+            )
 
         target.item.setAttr("color", normalizedColor)
 
@@ -574,20 +609,21 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 delete @savingRows[affectedRowId]
             )
 
+            @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
             @activeColorMenuRowId = null
             delete @colorMenuOpenUpwardByRowId[row?.rowId] if row?.rowId?
             @timelineStartAnchor = null
             @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
             @scope.$evalAsync()
-            @confirm.notify("success")
+            @confirm.notify("success") if options.notify != false
             return
-        , =>
+        , (errorData) =>
             target.item.revert()
             _.each(affectedRows, (affectedRowId) =>
                 delete @savingRows[affectedRowId]
             )
-            @confirm.notify("error")
-            return @q.reject()
+            @confirm.notify("error") if options.notify != false
+            return @q.reject(errorData)
 
     saveBarDateRange: (rowId, startDay, endDay, options = {}) ->
         row = @rowNodesById[rowId]
