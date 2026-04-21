@@ -2054,6 +2054,7 @@ GanttBarResizeDirective = ($document) ->
 
             return {
                 position: edgeLimit.position
+                slotIndex: edgeLimit.slotIndex
                 descendantRowIds: limits.descendantRowIds or []
             }
 
@@ -2234,8 +2235,12 @@ GanttBarResizeDirective = ($document) ->
 
             if active.edge == "start"
                 nextStartDay = Math.max(1, Math.min(active.initialEndDay, active.initialStartDay + deltaDays))
+                if active.limit?.slotIndex?
+                    nextStartDay = Math.min(nextStartDay, active.limit.slotIndex)
             else
                 nextEndDay = Math.min(active.totalDays, Math.max(active.initialStartDay, active.initialEndDay + deltaDays))
+                if active.limit?.slotIndex?
+                    nextEndDay = Math.max(nextEndDay, active.limit.slotIndex)
 
             return if nextStartDay == active.startDay and nextEndDay == active.endDay
 
@@ -2274,6 +2279,7 @@ GanttBarResizeDirective = ($document) ->
 
             storedRowIndex = parseInt(bar.getAttribute("data-row-index") or "", 10)
             rowIndex = if !isNaN(storedRowIndex) then storedRowIndex else getVisibleRowIndex(rowId)
+            resizeLimit = getResizeLimit(bar, edge)
 
             active = {
                 bar: bar
@@ -2287,6 +2293,7 @@ GanttBarResizeDirective = ($document) ->
                 initialEndDay: initialEndDay
                 startDay: initialStartDay
                 endDay: initialEndDay
+                limit: resizeLimit
             }
 
             clearHover()
