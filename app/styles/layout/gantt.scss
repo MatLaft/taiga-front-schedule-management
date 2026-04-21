@@ -744,6 +744,32 @@
         opacity: 1;
     }
 
+    .gantt-bar-resize-popup {
+        background: $color-white;
+        border: 1px solid $color-gray300;
+        border-radius: 4px;
+        box-shadow: 4px 4px 8px rgba($color-black, .12);
+        color: $color-gray800;
+        font-size: .875rem;
+        font-weight: 500;
+        line-height: 1.35;
+        min-width: 11rem;
+        opacity: 0;
+        padding: .5rem .75rem;
+        pointer-events: none;
+        position: absolute;
+        transition: opacity .1s ease;
+        z-index: 4;
+    }
+
+    .gantt-bar-resize-popup.is-visible {
+        opacity: 1;
+    }
+
+    .gantt-bar-resize-popup-line + .gantt-bar-resize-popup-line {
+        margin-top: .25rem;
+    }
+
     .gantt-bar.is-dragging {
         opacity: .45;
     }

@@ -1888,8 +1888,26 @@ GanttSyncRowsDirective = ->
             _.defer(scheduleUpdate)
         )
 
+        isResizeOverlayMutation = (mutation) ->
+            node = mutation?.target
+
+            while node? and node != root
+                return true if node.classList?.contains("gantt-edge-indicator")
+                return true if node.classList?.contains("gantt-resize-limit-indicator")
+                return true if node.classList?.contains("gantt-bar-resize-popup")
+                node = node.parentNode
+
+            return false
+
         if window.MutationObserver?
-            observer = new MutationObserver ->
+            observer = new MutationObserver (mutations) ->
+                return if root.classList.contains("is-resizing-gantt-bar")
+
+                shouldUpdate = _.some(mutations or [], (mutation) ->
+                    return !isResizeOverlayMutation(mutation)
+                )
+                return if !shouldUpdate
+
                 scheduleUpdate()
 
             observer.observe(leftPanel, {childList: true, subtree: true})
@@ -1952,6 +1970,15 @@ GanttBarResizeDirective = ($document) ->
         limitIndicator = document.createElement("div")
         limitIndicator.setAttribute("class", "gantt-resize-limit-indicator")
         rightPanel.appendChild(limitIndicator)
+        resizePopup = document.createElement("div")
+        resizePopup.setAttribute("class", "gantt-bar-resize-popup")
+        resizePopupStart = document.createElement("div")
+        resizePopupStart.setAttribute("class", "gantt-bar-resize-popup-line")
+        resizePopupEnd = document.createElement("div")
+        resizePopupEnd.setAttribute("class", "gantt-bar-resize-popup-line")
+        resizePopup.appendChild(resizePopupStart)
+        resizePopup.appendChild(resizePopupEnd)
+        rightPanel.appendChild(resizePopup)
 
         getSvgForBar = (bar) ->
             node = bar
@@ -2078,6 +2105,44 @@ GanttBarResizeDirective = ($document) ->
         clearLimitIndicator = ->
             limitIndicator.classList.remove("is-visible")
 
+        clearResizePopup = ->
+            resizePopup.classList.remove("is-visible")
+
+        formatResizePopupDate = (slotIndex) ->
+            timelineStart = $scope.ctrl?.timeline?.start
+            return "-" if !timelineStart?
+
+            normalizedSlot = parseInt(slotIndex, 10)
+            normalizedSlot = 1 if isNaN(normalizedSlot)
+            normalizedSlot = Math.max(1, normalizedSlot)
+
+            return timelineStart.clone().add(normalizedSlot - 1, "day").format("DD MMMM YYYY")
+
+        positionResizePopup = (bar, startDay, endDay, edge) ->
+            return clearResizePopup() if !bar?
+
+            panelRect = rightPanel.getBoundingClientRect()
+            barRect = bar.getBoundingClientRect()
+            return clearResizePopup() if barRect.width <= 0 or barRect.height <= 0
+
+            resizePopupStart.textContent = "Come\u00e7o: #{formatResizePopupDate(startDay)}"
+            resizePopupEnd.textContent = "Fim: #{formatResizePopupDate(endDay)}"
+            resizePopup.classList.add("is-visible")
+
+            popupWidth = resizePopup.offsetWidth or 0
+            popupHeight = resizePopup.offsetHeight or 0
+            edgeX = if edge == "start" then barRect.left else barRect.right
+            left = edgeX - panelRect.left + rightPanel.scrollLeft + 10
+            maxLeft = rightPanel.scrollLeft + rightPanel.clientWidth - popupWidth - 8
+            left = Math.max(rightPanel.scrollLeft + 8, Math.min(left, maxLeft))
+
+            top = barRect.top - panelRect.top + rightPanel.scrollTop - popupHeight - 8
+            if top < rightPanel.scrollTop + 8
+                top = barRect.bottom - panelRect.top + rightPanel.scrollTop + 8
+
+            resizePopup.style.left = "#{Math.round(left)}px"
+            resizePopup.style.top = "#{Math.round(top)}px"
+
         positionLimitIndicator = (bar, edge) ->
             limit = getResizeLimit(bar, edge)
             return clearLimitIndicator() if !limit?
@@ -2203,6 +2268,7 @@ GanttBarResizeDirective = ($document) ->
             $document.off("mousemove", onDragMouseMove)
             $document.off("mouseup", stopDrag)
             clearLimitIndicator()
+            clearResizePopup()
 
             changed = finishedDrag.startDay != finishedDrag.initialStartDay or finishedDrag.endDay != finishedDrag.initialEndDay
             return if !changed
@@ -2251,6 +2317,7 @@ GanttBarResizeDirective = ($document) ->
             active.bar.setAttribute("data-end-day", active.endDay)
             renderBarGeometry(active.bar, active.startDay, active.endDay, active.rowIndex, active.totalDays)
             positionLimitIndicator(active.bar, active.edge)
+            positionResizePopup(active.bar, active.startDay, active.endDay, active.edge)
 
         startDrag = (bar, edge, event) ->
             return if !bar?
@@ -2300,6 +2367,7 @@ GanttBarResizeDirective = ($document) ->
             root.classList.add(DRAG_CLASS)
             bar.classList.add("is-dragging")
             positionLimitIndicator(bar, edge)
+            positionResizePopup(bar, active.startDay, active.endDay, edge)
             $document.on("mousemove", onDragMouseMove)
             $document.on("mouseup", stopDrag)
 
@@ -2349,6 +2417,7 @@ GanttBarResizeDirective = ($document) ->
             clearHover()
             edgeIndicator.remove()
             limitIndicator.remove()
+            resizePopup.remove()
             stopDrag()
 
     return {link: link}
