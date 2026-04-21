@@ -448,6 +448,18 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             @confirm.notify("error", message)
             return @q.reject()
 
+    canCreateBarDateRange: (rowId) ->
+        row = @rowNodesById[rowId]
+        return false if !row?.item? or !row.canEdit
+        return false if @savingRows[rowId]
+        return false if row.startMoment? or row.dueMoment?
+        return true
+
+    getGanttRowResizeLimits: (rowId) ->
+        row = @rowNodesById[rowId]
+        return null if !row?
+        return @_buildResizeLimits(row, @timeline)
+
     _collectAffectedEntitiesForDateSave: (row) ->
         affected = {
             taskId: null
@@ -1767,7 +1779,7 @@ GanttSyncRowsDirective = ->
 
         getBarsData = ->
             barsSvg = root.querySelector(".gantt-bars-svg")
-            bars = if barsSvg? then Array.from(root.querySelectorAll(".gantt-bar[data-gantt-row-id]")) else []
+            bars = if barsSvg? then Array.from(root.querySelectorAll(".gantt-bar[data-gantt-row-id]:not(.gantt-bar-create-preview)")) else []
 
             return {
                 barsSvg: barsSvg
@@ -1916,6 +1928,7 @@ GanttSyncRowsDirective = ->
                 return true if node.classList?.contains("gantt-edge-indicator")
                 return true if node.classList?.contains("gantt-resize-limit-indicator")
                 return true if node.classList?.contains("gantt-bar-resize-popup")
+                return true if node.classList?.contains("gantt-bar-create-preview")
                 node = node.parentNode
 
             return false
@@ -1924,6 +1937,7 @@ GanttSyncRowsDirective = ->
             observer = new MutationObserver (mutations) ->
                 return if root.classList.contains("is-resizing-gantt-bar")
                 return if root.classList.contains("is-moving-gantt-bar")
+                return if root.classList.contains("is-creating-gantt-bar")
 
                 shouldUpdate = _.some(mutations or [], (mutation) ->
                     return !isResizeOverlayMutation(mutation)
@@ -1968,6 +1982,7 @@ GanttBarResizeDirective = ($document) ->
         active = null
         DRAG_CLASS = "is-resizing-gantt-bar"
         MOVE_DRAG_CLASS = "is-moving-gantt-bar"
+        CREATE_DRAG_CLASS = "is-creating-gantt-bar"
         HOVER_CLASS = "is-hovering-gantt-edge"
         SVG_NS = "http://www.w3.org/2000/svg"
         INDICATOR_FRAME_WIDTH = 10
@@ -2013,6 +2028,16 @@ GanttBarResizeDirective = ($document) ->
                 node = node.parentNode
             return null
 
+        getBarsSvg = ->
+            return rightPanel.querySelector(".gantt-bars-svg")
+
+        getTimelineGrid = ->
+            return rightPanel.querySelector(".gantt-timeline-grid")
+
+        getVisibleRows = ->
+            rows = Array.from(leftPanel.querySelectorAll(".gantt-tree-row"))
+            return rows.filter((row) -> row.offsetParent?)
+
         getBarDetailUnits = (baseUnits) ->
             baseSlotWidthRem = parseFloat($scope.ctrl?.dayWidthRem or "2.2")
             baseSlotWidthRem = 2.2 if isNaN(baseSlotWidthRem) or baseSlotWidthRem <= 0
@@ -2057,8 +2082,7 @@ GanttBarResizeDirective = ($document) ->
             }
 
         getVisibleRowIndex = (rowId) ->
-            rows = Array.from(leftPanel.querySelectorAll(".gantt-tree-row"))
-            visibleRows = rows.filter((row) -> row.offsetParent?)
+            visibleRows = getVisibleRows()
             index = _.findIndex(visibleRows, (row) ->
                 row.getAttribute("data-gantt-row-id") == rowId
             )
@@ -2080,6 +2104,26 @@ GanttBarResizeDirective = ($document) ->
                 path = if barType == "story" then buildStoryPath(startDay, endDay, rowIndex, totalDays) else buildEpicPath(startDay, endDay, rowIndex, totalDays)
                 bar.setAttribute("d", path)
 
+        createPreviewBar = (svg, rowId, row, startDay, endDay, rowIndex, totalDays) ->
+            barType = row?.type or "task"
+            shape = if barType == "task" then "rounded" else "arrow"
+            tagName = if shape == "rounded" then "rect" else "path"
+            bar = document.createElementNS(SVG_NS, tagName)
+            bar.setAttribute("class", "gantt-bar gantt-bar-#{barType} gantt-bar-create-preview")
+            bar.setAttribute("data-gantt-row-id", rowId)
+            bar.setAttribute("data-bar-type", barType)
+            bar.setAttribute("data-shape", shape)
+            bar.setAttribute("data-can-edit", "true")
+            bar.setAttribute("data-start-day", startDay)
+            bar.setAttribute("data-end-day", endDay)
+            bar.setAttribute("data-row-index", rowIndex)
+            bar.setAttribute("shape-rendering", "crispEdges") if shape != "rounded"
+            bar.style.fill = row.barColor if row?.barColor?
+
+            renderBarGeometry(bar, startDay, endDay, rowIndex, totalDays)
+            svg.appendChild(bar)
+            return bar
+
         getNearestBarElement = (target) ->
             node = target
             while node? and node != rightPanel
@@ -2096,6 +2140,58 @@ GanttBarResizeDirective = ($document) ->
             return "end" if rect.right - event.clientX <= handleZonePx
             return null
 
+        clamp = (value, minValue, maxValue) ->
+            Math.max(minValue, Math.min(value, maxValue))
+
+        getEventTimelinePosition = (event, svg, totalDays) ->
+            rect = svg?.getBoundingClientRect()
+            return 0 if !rect? or rect.width <= 0
+
+            relativeX = event.clientX - rect.left
+            position = (relativeX / rect.width) * totalDays
+            return clamp(position, 0, totalDays)
+
+        getSlotIndexForEvent = (event, svg, totalDays) ->
+            position = getEventTimelinePosition(event, svg, totalDays)
+            slotIndex = Math.floor(position) + 1
+            return clamp(slotIndex, 1, totalDays)
+
+        isEventInsideTimelineGrid = (event) ->
+            grid = getTimelineGrid()
+            return false if !grid?
+
+            node = event.target
+            while node? and node != rightPanel
+                return true if node == grid
+                node = node.parentNode
+
+            return false
+
+        getGridRowForEvent = (event) ->
+            grid = getTimelineGrid()
+            return null if !grid?
+
+            gridRect = grid.getBoundingClientRect()
+            return null if gridRect.height <= 0
+            return null if event.clientY < gridRect.top or event.clientY > gridRect.bottom
+
+            visibleRows = getVisibleRows()
+            return null if !visibleRows.length
+
+            rowHeight = gridRect.height / visibleRows.length
+            return null if rowHeight <= 0
+
+            rowIndex = Math.floor((event.clientY - gridRect.top) / rowHeight)
+            rowIndex = clamp(rowIndex, 0, visibleRows.length - 1)
+            row = visibleRows[rowIndex]
+            rowId = row?.getAttribute("data-gantt-row-id")
+            return null if !rowId?
+
+            return {
+                rowId: rowId
+                rowIndex: rowIndex
+            }
+
         isBarEditable = (bar) ->
             return false if !bar?
             return bar.getAttribute("data-can-edit") == "true"
@@ -2107,10 +2203,23 @@ GanttBarResizeDirective = ($document) ->
                 return barModel?.rowId == rowId
             )
 
-        getResizeLimit = (bar, edge) ->
-            rowId = bar?.getAttribute("data-gantt-row-id")
+        getRowModel = (rowId) ->
+            return null if !rowId?
+            return $scope.ctrl?.rowNodesById?[rowId]
+
+        canCreateBarForRow = (rowId) ->
+            ctrl = $scope.ctrl
+            return false if !ctrl?.canCreateBarDateRange?
+            return ctrl.canCreateBarDateRange(rowId)
+
+        getResizeLimitsForRow = (rowId) ->
             barModel = getBarModel(rowId)
             limits = barModel?.resizeLimits
+            if !limits? and $scope.ctrl?.getGanttRowResizeLimits?
+                limits = $scope.ctrl.getGanttRowResizeLimits(rowId)
+            return limits
+
+        buildResizeLimit = (limits, edge) ->
             return null if !limits?
 
             edgeLimit = limits[edge]
@@ -2121,6 +2230,13 @@ GanttBarResizeDirective = ($document) ->
                 slotIndex: edgeLimit.slotIndex
                 descendantRowIds: limits.descendantRowIds or []
             }
+
+        getResizeLimitForRow = (rowId, edge) ->
+            return buildResizeLimit(getResizeLimitsForRow(rowId), edge)
+
+        getResizeLimit = (bar, edge) ->
+            rowId = bar?.getAttribute("data-gantt-row-id")
+            return getResizeLimitForRow(rowId, edge)
 
         getBarFillColor = (bar) ->
             return "" if !bar?
@@ -2134,7 +2250,7 @@ GanttBarResizeDirective = ($document) ->
         findBarByRowId = (rowId) ->
             return null if !rowId?
 
-            bars = Array.from(root.querySelectorAll(".gantt-bar[data-gantt-row-id]"))
+            bars = Array.from(root.querySelectorAll(".gantt-bar[data-gantt-row-id]:not(.gantt-bar-create-preview)"))
             return _.find(bars, (candidate) ->
                 return candidate.getAttribute("data-gantt-row-id") == rowId
             )
@@ -2327,12 +2443,26 @@ GanttBarResizeDirective = ($document) ->
             active = null
             root.classList.remove(DRAG_CLASS)
             root.classList.remove(MOVE_DRAG_CLASS)
+            root.classList.remove(CREATE_DRAG_CLASS)
             finishedDrag.bar?.classList?.remove("is-dragging")
             finishedDrag.bar?.classList?.remove("is-move-bar")
             $document.off("mousemove", onDragMouseMove)
             $document.off("mouseup", stopDrag)
             clearLimitIndicator()
             clearResizePopup()
+
+            if finishedDrag.isCreating
+                finishedDrag.bar?.remove()
+
+                ctrl = $scope.ctrl
+                return if !ctrl?.saveBarDateRange?
+
+                ctrl.saveBarDateRange(finishedDrag.rowId, finishedDrag.startDay, finishedDrag.endDay).then =>
+                    $scope.$evalAsync()
+                    return
+                , =>
+                    return
+                return
 
             if finishedDrag.bar?
                 finishedDrag.bar.setAttribute("data-start-day", finishedDrag.startDay)
@@ -2369,6 +2499,34 @@ GanttBarResizeDirective = ($document) ->
 
         onDragMouseMove = (event) ->
             return if !active?
+
+            if active.isCreating
+                nextVisualEndDay = Math.max(active.initialStartDay, getEventTimelinePosition(event, active.svg, active.totalDays))
+                if active.endLimit?.slotIndex?
+                    nextVisualEndDay = Math.max(nextVisualEndDay, active.endLimit.slotIndex)
+                nextVisualEndDay = Math.min(active.totalDays, nextVisualEndDay)
+
+                nextEndDay = getSlotIndexForEvent(event, active.svg, active.totalDays)
+                nextEndDay = Math.max(active.initialStartDay, nextEndDay)
+                if active.endLimit?.slotIndex?
+                    nextEndDay = Math.max(nextEndDay, active.endLimit.slotIndex)
+                nextEndDay = Math.min(active.totalDays, nextEndDay)
+
+                return if nextVisualEndDay == active.visualEndDay and nextEndDay == active.endDay
+
+                active.endDay = nextEndDay
+                active.visualEndDay = nextVisualEndDay
+                active.bar.setAttribute("data-end-day", active.endDay)
+                renderBarGeometry(
+                    active.bar,
+                    active.visualStartDay,
+                    active.visualEndDay,
+                    active.rowIndex,
+                    active.totalDays
+                )
+                positionMoveLimitIndicators(active.bar)
+                positionResizePopup(active.bar, active.startDay, active.endDay, "end")
+                return
 
             deltaDays = (event.clientX - active.startX) / active.dayWidthPx
             nextVisualStartDay = active.initialStartDay
@@ -2513,6 +2671,69 @@ GanttBarResizeDirective = ($document) ->
             $document.on("mousemove", onDragMouseMove)
             $document.on("mouseup", stopDrag)
 
+        startCreateBar = (event) ->
+            return false if !isEventInsideTimelineGrid(event)
+
+            svg = getBarsSvg()
+            return false if !svg?
+
+            totalDays = parseFloat(svg.getAttribute("data-total-days") or "0") or 0
+            totalDays = Math.max(1, totalDays)
+
+            svgRect = svg.getBoundingClientRect()
+            return false if svgRect.width <= 0
+
+            rowData = getGridRowForEvent(event)
+            return false if !rowData?
+
+            rowId = rowData.rowId
+            return false if findBarByRowId(rowId)?
+            return false if !canCreateBarForRow(rowId)
+
+            row = getRowModel(rowId)
+            return false if !row?
+
+            startLimit = getResizeLimitForRow(rowId, "start")
+            endLimit = getResizeLimitForRow(rowId, "end")
+            startDay = getSlotIndexForEvent(event, svg, totalDays)
+            startDay = Math.min(startDay, startLimit.slotIndex) if startLimit?.slotIndex?
+            startDay = clamp(startDay, 1, totalDays)
+
+            endDay = startDay
+            endDay = Math.max(endDay, endLimit.slotIndex) if endLimit?.slotIndex?
+            endDay = clamp(endDay, startDay, totalDays)
+
+            clearHover()
+            root.classList.add(CREATE_DRAG_CLASS)
+
+            bar = createPreviewBar(svg, rowId, row, startDay, endDay, rowData.rowIndex, totalDays)
+            bar.classList.add("is-dragging")
+
+            active = {
+                isCreating: true
+                bar: bar
+                svg: svg
+                edge: "create"
+                rowId: rowId
+                startX: event.clientX
+                totalDays: totalDays
+                rowIndex: rowData.rowIndex
+                initialStartDay: startDay
+                initialEndDay: endDay
+                startDay: startDay
+                endDay: endDay
+                visualStartDay: startDay
+                visualEndDay: endDay
+                startLimit: startLimit
+                endLimit: endLimit
+            }
+
+            positionMoveLimitIndicators(bar)
+            positionResizePopup(bar, active.startDay, active.endDay, "end")
+            $document.on("mousemove", onDragMouseMove)
+            $document.on("mouseup", stopDrag)
+            return true
+
         onHoverMouseMove = (event) ->
             return if active?
 
@@ -2534,7 +2755,14 @@ GanttBarResizeDirective = ($document) ->
             return if active?
 
             bar = getNearestBarElement(event.target)
-            return if !bar? or bar.classList.contains("is-hidden")
+
+            if !bar? or bar.classList.contains("is-hidden")
+                return if !startCreateBar(event)
+
+                event.preventDefault()
+                event.stopPropagation()
+                return
+
             return if !isBarEditable(bar)
 
             edge = resolveResizeEdge(bar, event) or "move"

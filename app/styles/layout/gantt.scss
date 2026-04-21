@@ -712,6 +712,11 @@
         cursor: grabbing;
     }
 
+    .gantt-bar-create-preview {
+        opacity: .55;
+        pointer-events: none;
+    }
+
     .gantt-edge-indicator {
         opacity: 0;
         overflow: visible;
@@ -791,6 +796,12 @@
     .is-moving-gantt-bar,
     .is-moving-gantt-bar * {
         cursor: grabbing;
+        user-select: none;
+    }
+
+    .is-creating-gantt-bar,
+    .is-creating-gantt-bar * {
+        cursor: crosshair;
         user-select: none;
     }
 
