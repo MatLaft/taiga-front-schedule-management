@@ -1261,6 +1261,61 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             svgStyle: {width: "#{@_formatRemValue(timelineWidthRem)}rem", height: "100%"}
         }
 
+    _getDescendantRows: (row) ->
+        descendants = []
+
+        collect = (node) ->
+            _.each(node?.children or [], (child) ->
+                descendants.push(child)
+                collect(child)
+            )
+
+        collect(row)
+        return descendants
+
+    _buildResizeLimitData: (targetMoment, edge, timeline) ->
+        return null if !targetMoment? or !timeline?
+
+        slotIndex = @_findTimelineSlotIndexForMoment(targetMoment, timeline)
+        position = if edge == "start" then slotIndex - 1 else slotIndex
+        position = Math.max(0, Math.min(timeline.totalDays, position))
+
+        return {
+            slotIndex: slotIndex
+            position: position
+        }
+
+    _buildResizeLimits: (row, timeline) ->
+        descendants = @_getDescendantRows(row)
+        return null if !descendants.length
+
+        descendantRowIds = []
+        earliestStartMoment = null
+        latestDueMoment = null
+
+        _.each(descendants, (child) ->
+            descendantRowIds.push(child.rowId) if child.rowId?
+
+            if child.startMoment?
+                if !earliestStartMoment? or child.startMoment.isBefore(earliestStartMoment, "day")
+                    earliestStartMoment = child.startMoment.clone()
+
+            if child.dueMoment?
+                if !latestDueMoment? or child.dueMoment.isAfter(latestDueMoment, "day")
+                    latestDueMoment = child.dueMoment.clone()
+        )
+
+        startLimit = @_buildResizeLimitData(earliestStartMoment, "start", timeline)
+        endLimit = @_buildResizeLimitData(latestDueMoment, "end", timeline)
+
+        return null if !startLimit? and !endLimit?
+
+        return {
+            descendantRowIds: descendantRowIds
+            start: startLimit
+            end: endLimit
+        }
+
     _buildBars: (rows, timeline) ->
         rowIndexesById = {}
         bars = []
@@ -1296,6 +1351,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 endDay: endDay
                 label: row.label
                 canEdit: !!row.canEdit
+                resizeLimits: @_buildResizeLimits(row, timeline)
                 style: if row.barColor? then {fill: row.barColor} else {}
             }
 
@@ -1893,6 +1949,9 @@ GanttBarResizeDirective = ($document) ->
         edgeIndicator.appendChild(edgeIndicatorLine)
         edgeIndicator.appendChild(edgeIndicatorArrow)
         rightPanel.appendChild(edgeIndicator)
+        limitIndicator = document.createElement("div")
+        limitIndicator.setAttribute("class", "gantt-resize-limit-indicator")
+        rightPanel.appendChild(limitIndicator)
 
         getSvgForBar = (bar) ->
             node = bar
@@ -1977,6 +2036,84 @@ GanttBarResizeDirective = ($document) ->
             return false if !bar?
             return bar.getAttribute("data-can-edit") == "true"
 
+        getBarModel = (rowId) ->
+            return null if !rowId?
+
+            return _.find($scope.ctrl?.ganttBars or [], (barModel) ->
+                return barModel?.rowId == rowId
+            )
+
+        getResizeLimit = (bar, edge) ->
+            rowId = bar?.getAttribute("data-gantt-row-id")
+            barModel = getBarModel(rowId)
+            limits = barModel?.resizeLimits
+            return null if !limits?
+
+            edgeLimit = limits[edge]
+            return null if !edgeLimit?.position?
+
+            return {
+                position: edgeLimit.position
+                descendantRowIds: limits.descendantRowIds or []
+            }
+
+        getBarFillColor = (bar) ->
+            return "" if !bar?
+
+            computed = window.getComputedStyle(bar)
+            fill = computed?.fill
+            return fill if fill? and fill != "none" and fill != "rgba(0, 0, 0, 0)"
+
+            return bar.getAttribute("fill") or ""
+
+        findBarByRowId = (rowId) ->
+            return null if !rowId?
+
+            bars = Array.from(root.querySelectorAll(".gantt-bar[data-gantt-row-id]"))
+            return _.find(bars, (candidate) ->
+                return candidate.getAttribute("data-gantt-row-id") == rowId
+            )
+
+        clearLimitIndicator = ->
+            limitIndicator.classList.remove("is-visible")
+
+        positionLimitIndicator = (bar, edge) ->
+            limit = getResizeLimit(bar, edge)
+            return clearLimitIndicator() if !limit?
+
+            svg = getSvgForBar(bar)
+            return clearLimitIndicator() if !svg?
+
+            totalDays = parseFloat(svg.getAttribute("data-total-days") or "0") or 0
+            totalDays = Math.max(1, totalDays)
+
+            svgRect = svg.getBoundingClientRect()
+            panelRect = rightPanel.getBoundingClientRect()
+            barRect = bar.getBoundingClientRect()
+            return clearLimitIndicator() if svgRect.width <= 0 or barRect.height <= 0
+
+            x = svgRect.left - panelRect.left
+            x += rightPanel.scrollLeft
+            x += (limit.position / totalDays) * svgRect.width
+
+            top = barRect.top - panelRect.top + rightPanel.scrollTop
+            bottom = barRect.bottom - panelRect.top + rightPanel.scrollTop
+
+            _.each(limit.descendantRowIds, (descendantRowId) ->
+                descendantBar = findBarByRowId(descendantRowId)
+                return if !descendantBar? or descendantBar.classList.contains("is-hidden")
+
+                descendantRect = descendantBar.getBoundingClientRect()
+                descendantBottom = descendantRect.bottom - panelRect.top + rightPanel.scrollTop
+                bottom = Math.max(bottom, descendantBottom)
+            )
+
+            limitIndicator.style.left = "#{Math.round(x)}px"
+            limitIndicator.style.top = "#{Math.round(top)}px"
+            limitIndicator.style.height = "#{Math.max(1, Math.round(bottom - top))}px"
+            limitIndicator.style.backgroundColor = getBarFillColor(bar)
+            limitIndicator.classList.add("is-visible")
+
         clearHover = ->
             if hoveredBar?
                 hoveredBar.classList.remove("is-resize-edge")
@@ -1989,6 +2126,7 @@ GanttBarResizeDirective = ($document) ->
             edgeIndicator.classList.remove("is-visible")
             edgeIndicator.classList.remove("is-start")
             edgeIndicator.classList.remove("is-end")
+            clearLimitIndicator()
 
         buildIndicatorLinePath = (height, edge) ->
             top = 1
@@ -2052,6 +2190,7 @@ GanttBarResizeDirective = ($document) ->
             hoveredBar.classList.add(if edge == "start" then "is-resize-start" else "is-resize-end")
             rightPanel.classList.add(HOVER_CLASS)
             positionEdgeIndicator(bar, edge)
+            positionLimitIndicator(bar, edge)
 
         stopDrag = ->
             return if !active?
@@ -2062,6 +2201,7 @@ GanttBarResizeDirective = ($document) ->
             finishedDrag.bar?.classList?.remove("is-dragging")
             $document.off("mousemove", onDragMouseMove)
             $document.off("mouseup", stopDrag)
+            clearLimitIndicator()
 
             changed = finishedDrag.startDay != finishedDrag.initialStartDay or finishedDrag.endDay != finishedDrag.initialEndDay
             return if !changed
@@ -2105,6 +2245,7 @@ GanttBarResizeDirective = ($document) ->
             active.bar.setAttribute("data-start-day", active.startDay)
             active.bar.setAttribute("data-end-day", active.endDay)
             renderBarGeometry(active.bar, active.startDay, active.endDay, active.rowIndex, active.totalDays)
+            positionLimitIndicator(active.bar, active.edge)
 
         startDrag = (bar, edge, event) ->
             return if !bar?
@@ -2151,6 +2292,7 @@ GanttBarResizeDirective = ($document) ->
             clearHover()
             root.classList.add(DRAG_CLASS)
             bar.classList.add("is-dragging")
+            positionLimitIndicator(bar, edge)
             $document.on("mousemove", onDragMouseMove)
             $document.on("mouseup", stopDrag)
 
@@ -2199,6 +2341,7 @@ GanttBarResizeDirective = ($document) ->
             rightPanel.removeEventListener("mouseleave", onMouseLeave)
             clearHover()
             edgeIndicator.remove()
+            limitIndicator.remove()
             stopDrag()
 
     return {link: link}

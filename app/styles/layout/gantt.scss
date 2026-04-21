@@ -730,6 +730,20 @@
         opacity: 1;
     }
 
+    .gantt-resize-limit-indicator {
+        opacity: 0;
+        pointer-events: none;
+        position: absolute;
+        top: 0;
+        transition: opacity .1s ease;
+        width: 1px;
+        z-index: 2;
+    }
+
+    .gantt-resize-limit-indicator.is-visible {
+        opacity: 1;
+    }
+
     .gantt-bar.is-dragging {
         opacity: .45;
     }
