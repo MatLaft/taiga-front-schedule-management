@@ -704,6 +704,14 @@
         cursor: ew-resize;
     }
 
+    .gantt-bar.is-move-bar {
+        cursor: grab;
+    }
+
+    .gantt-bar.is-dragging.is-move-bar {
+        cursor: grabbing;
+    }
+
     .gantt-edge-indicator {
         opacity: 0;
         overflow: visible;
@@ -777,6 +785,12 @@
     .is-resizing-gantt-bar,
     .is-resizing-gantt-bar * {
         cursor: ew-resize;
+        user-select: none;
+    }
+
+    .is-moving-gantt-bar,
+    .is-moving-gantt-bar * {
+        cursor: grabbing;
         user-select: none;
     }
 

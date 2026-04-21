@@ -1316,9 +1316,17 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             end: endLimit
         }
 
+    _getBarDetailUnits: (timeline, baseUnits) ->
+        slotWidthRem = parseFloat(timeline?.slotWidthRem)
+        slotWidthRem = @dayWidthRem if isNaN(slotWidthRem) or slotWidthRem <= 0
+
+        return baseUnits * (@dayWidthRem / slotWidthRem)
+
     _buildBars: (rows, timeline) ->
         rowIndexesById = {}
         bars = []
+        arrowDetailUnits = @_getBarDetailUnits(timeline, 0.28)
+        cornerDetailUnits = @_getBarDetailUnits(timeline, 0.16)
 
         _.each(rows or [], (row, index) ->
             rowIndexesById[row.rowId] = index
@@ -1356,46 +1364,48 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             }
 
             if shape == "rounded"
-                bar.rect = @_buildRoundedRect(startDay, endDay, rowIndex, timeline.totalDays)
+                bar.rect = @_buildRoundedRect(startDay, endDay, rowIndex, timeline.totalDays, cornerDetailUnits)
             else if barType == "story"
-                bar.pathD = @_buildStoryPath(startDay, endDay, rowIndex, timeline.totalDays)
+                bar.pathD = @_buildStoryPath(startDay, endDay, rowIndex, timeline.totalDays, arrowDetailUnits)
             else
-                bar.pathD = @_buildEpicPath(startDay, endDay, rowIndex, timeline.totalDays)
+                bar.pathD = @_buildEpicPath(startDay, endDay, rowIndex, timeline.totalDays, arrowDetailUnits)
 
             bars.push(bar)
         )
 
         return bars
 
-    _buildEpicPath: (startDay, endDay, rowIndex, totalDays) ->
+    _buildEpicPath: (startDay, endDay, rowIndex, totalDays, detailUnits = 0.28) ->
         left = Math.max(0, startDay - 1)
         right = Math.min(totalDays, endDay)
         top = rowIndex + 0.22
         bottom = rowIndex + 0.58
         tip = rowIndex + 0.74
-        inset = 0.28
+        span = Math.max(right - left, 0.5)
+        inset = Math.min(detailUnits, span / 3)
         return "M#{left},#{top}L#{right},#{top}L#{right},#{bottom}L#{right},#{tip}L#{right - inset},#{bottom}L#{left + inset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
 
-    _buildStoryPath: (startDay, endDay, rowIndex, totalDays) ->
+    _buildStoryPath: (startDay, endDay, rowIndex, totalDays, detailUnits = 0.28) ->
         left = Math.max(0, startDay - 1)
         right = Math.min(totalDays, endDay)
         top = rowIndex + 0.22
         bottom = rowIndex + 0.58
         mid = (top + bottom) / 2
         span = Math.max(right - left, 0.5)
-        notch = Math.min(0.28, span / 4)
+        notch = Math.min(detailUnits, span / 4)
         return "M#{left},#{top}L#{right},#{top}L#{right - notch},#{mid}L#{right},#{bottom}L#{left},#{bottom}L#{left + notch},#{mid}z"
 
-    _buildRoundedRect: (startDay, endDay, rowIndex, totalDays) ->
+    _buildRoundedRect: (startDay, endDay, rowIndex, totalDays, cornerUnits = 0.16) ->
         left = Math.max(0, startDay - 1)
         right = Math.min(totalDays, endDay)
         width = Math.max(right - left, .35)
+        rx = Math.min(cornerUnits, width / 2)
         return {
             x: left
             y: rowIndex + 0.28
             width: width
             height: 0.50
-            rx: 0.16
+            rx: rx
             ry: 0.16
         }
 
@@ -1772,13 +1782,23 @@ GanttSyncRowsDirective = ->
             )
             return modelByRowId
 
+        getBarDetailUnits = (baseUnits) ->
+            baseSlotWidthRem = parseFloat($scope.ctrl?.dayWidthRem or "2.2")
+            baseSlotWidthRem = 2.2 if isNaN(baseSlotWidthRem) or baseSlotWidthRem <= 0
+
+            slotWidthRem = parseFloat($scope.ctrl?.timeline?.slotWidthRem or "#{baseSlotWidthRem}")
+            slotWidthRem = baseSlotWidthRem if isNaN(slotWidthRem) or slotWidthRem <= 0
+
+            return baseUnits * (baseSlotWidthRem / slotWidthRem)
+
         buildEpicPath = (startDay, endDay, rowIndex, totalDays) ->
             left = Math.max(0, startDay - 1)
             right = Math.min(totalDays, endDay)
             top = rowIndex + 0.22
             bottom = rowIndex + 0.58
             tip = rowIndex + 0.74
-            inset = 0.28
+            span = Math.max(right - left, 0.5)
+            inset = Math.min(getBarDetailUnits(0.28), span / 3)
             "M#{left},#{top}L#{right},#{top}L#{right},#{bottom}L#{right},#{tip}L#{right - inset},#{bottom}L#{left + inset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
 
         buildStoryPath = (startDay, endDay, rowIndex, totalDays) ->
@@ -1788,19 +1808,20 @@ GanttSyncRowsDirective = ->
             bottom = rowIndex + 0.58
             mid = (top + bottom) / 2
             span = Math.max(right - left, 0.5)
-            notch = Math.min(0.28, span / 4)
+            notch = Math.min(getBarDetailUnits(0.28), span / 4)
             "M#{left},#{top}L#{right},#{top}L#{right - notch},#{mid}L#{right},#{bottom}L#{left},#{bottom}L#{left + notch},#{mid}z"
 
         buildRoundedRect = (startDay, endDay, rowIndex, totalDays) ->
             left = Math.max(0, startDay - 1)
             right = Math.min(totalDays, endDay)
             width = Math.max(right - left, .35)
+            rx = Math.min(getBarDetailUnits(0.16), width / 2)
             {
                 x: left
                 y: rowIndex + 0.28
                 width: width
                 height: 0.50
-                rx: 0.16
+                rx: rx
                 ry: 0.16
             }
 
@@ -1902,6 +1923,7 @@ GanttSyncRowsDirective = ->
         if window.MutationObserver?
             observer = new MutationObserver (mutations) ->
                 return if root.classList.contains("is-resizing-gantt-bar")
+                return if root.classList.contains("is-moving-gantt-bar")
 
                 shouldUpdate = _.some(mutations or [], (mutation) ->
                     return !isResizeOverlayMutation(mutation)
@@ -1945,6 +1967,7 @@ GanttBarResizeDirective = ($document) ->
 
         active = null
         DRAG_CLASS = "is-resizing-gantt-bar"
+        MOVE_DRAG_CLASS = "is-moving-gantt-bar"
         HOVER_CLASS = "is-hovering-gantt-edge"
         SVG_NS = "http://www.w3.org/2000/svg"
         INDICATOR_FRAME_WIDTH = 10
@@ -1970,6 +1993,9 @@ GanttBarResizeDirective = ($document) ->
         limitIndicator = document.createElement("div")
         limitIndicator.setAttribute("class", "gantt-resize-limit-indicator")
         rightPanel.appendChild(limitIndicator)
+        moveEndLimitIndicator = document.createElement("div")
+        moveEndLimitIndicator.setAttribute("class", "gantt-resize-limit-indicator")
+        rightPanel.appendChild(moveEndLimitIndicator)
         resizePopup = document.createElement("div")
         resizePopup.setAttribute("class", "gantt-bar-resize-popup")
         resizePopupStart = document.createElement("div")
@@ -1987,13 +2013,23 @@ GanttBarResizeDirective = ($document) ->
                 node = node.parentNode
             return null
 
+        getBarDetailUnits = (baseUnits) ->
+            baseSlotWidthRem = parseFloat($scope.ctrl?.dayWidthRem or "2.2")
+            baseSlotWidthRem = 2.2 if isNaN(baseSlotWidthRem) or baseSlotWidthRem <= 0
+
+            slotWidthRem = parseFloat($scope.ctrl?.timeline?.slotWidthRem or "#{baseSlotWidthRem}")
+            slotWidthRem = baseSlotWidthRem if isNaN(slotWidthRem) or slotWidthRem <= 0
+
+            return baseUnits * (baseSlotWidthRem / slotWidthRem)
+
         buildEpicPath = (startDay, endDay, rowIndex, totalDays) ->
             left = Math.max(0, startDay - 1)
             right = Math.min(totalDays, endDay)
             top = rowIndex + 0.22
             bottom = rowIndex + 0.58
             tip = rowIndex + 0.74
-            inset = 0.28
+            span = Math.max(right - left, 0.5)
+            inset = Math.min(getBarDetailUnits(0.28), span / 3)
             "M#{left},#{top}L#{right},#{top}L#{right},#{bottom}L#{right},#{tip}L#{right - inset},#{bottom}L#{left + inset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
 
         buildStoryPath = (startDay, endDay, rowIndex, totalDays) ->
@@ -2003,19 +2039,20 @@ GanttBarResizeDirective = ($document) ->
             bottom = rowIndex + 0.58
             mid = (top + bottom) / 2
             span = Math.max(right - left, 0.5)
-            notch = Math.min(0.28, span / 4)
+            notch = Math.min(getBarDetailUnits(0.28), span / 4)
             "M#{left},#{top}L#{right},#{top}L#{right - notch},#{mid}L#{right},#{bottom}L#{left},#{bottom}L#{left + notch},#{mid}z"
 
         buildRoundedRect = (startDay, endDay, rowIndex, totalDays) ->
             left = Math.max(0, startDay - 1)
             right = Math.min(totalDays, endDay)
             width = Math.max(right - left, .35)
+            rx = Math.min(getBarDetailUnits(0.16), width / 2)
             {
                 x: left
                 y: rowIndex + 0.28
                 width: width
                 height: 0.50
-                rx: 0.16
+                rx: rx
                 ry: 0.16
             }
 
@@ -2102,8 +2139,12 @@ GanttBarResizeDirective = ($document) ->
                 return candidate.getAttribute("data-gantt-row-id") == rowId
             )
 
+        hideLimitIndicator = (indicator) ->
+            indicator?.classList?.remove("is-visible")
+
         clearLimitIndicator = ->
-            limitIndicator.classList.remove("is-visible")
+            hideLimitIndicator(limitIndicator)
+            hideLimitIndicator(moveEndLimitIndicator)
 
         clearResizePopup = ->
             resizePopup.classList.remove("is-visible")
@@ -2153,12 +2194,12 @@ GanttBarResizeDirective = ($document) ->
             resizePopup.style.left = "#{Math.round(left)}px"
             resizePopup.style.top = "#{Math.round(top)}px"
 
-        positionLimitIndicator = (bar, edge) ->
+        positionLimitIndicator = (bar, edge, indicator = limitIndicator) ->
             limit = getResizeLimit(bar, edge)
-            return clearLimitIndicator() if !limit?
+            return hideLimitIndicator(indicator) if !limit?
 
             svg = getSvgForBar(bar)
-            return clearLimitIndicator() if !svg?
+            return hideLimitIndicator(indicator) if !svg?
 
             totalDays = parseFloat(svg.getAttribute("data-total-days") or "0") or 0
             totalDays = Math.max(1, totalDays)
@@ -2166,7 +2207,7 @@ GanttBarResizeDirective = ($document) ->
             svgRect = svg.getBoundingClientRect()
             panelRect = rightPanel.getBoundingClientRect()
             barRect = bar.getBoundingClientRect()
-            return clearLimitIndicator() if svgRect.width <= 0 or barRect.height <= 0
+            return hideLimitIndicator(indicator) if svgRect.width <= 0 or barRect.height <= 0
 
             x = svgRect.left - panelRect.left
             x += rightPanel.scrollLeft
@@ -2184,17 +2225,22 @@ GanttBarResizeDirective = ($document) ->
                 bottom = Math.max(bottom, descendantBottom)
             )
 
-            limitIndicator.style.left = "#{Math.round(x)}px"
-            limitIndicator.style.top = "#{Math.round(top)}px"
-            limitIndicator.style.height = "#{Math.max(1, Math.round(bottom - top))}px"
-            limitIndicator.style.backgroundColor = getBarFillColor(bar)
-            limitIndicator.classList.add("is-visible")
+            indicator.style.left = "#{Math.round(x)}px"
+            indicator.style.top = "#{Math.round(top)}px"
+            indicator.style.height = "#{Math.max(1, Math.round(bottom - top))}px"
+            indicator.style.backgroundColor = getBarFillColor(bar)
+            indicator.classList.add("is-visible")
+
+        positionMoveLimitIndicators = (bar) ->
+            positionLimitIndicator(bar, "start", limitIndicator)
+            positionLimitIndicator(bar, "end", moveEndLimitIndicator)
 
         clearHover = ->
             if hoveredBar?
                 hoveredBar.classList.remove("is-resize-edge")
                 hoveredBar.classList.remove("is-resize-start")
                 hoveredBar.classList.remove("is-resize-end")
+                hoveredBar.classList.remove("is-move-bar")
 
             hoveredBar = null
             hoveredEdge = null
@@ -2262,6 +2308,12 @@ GanttBarResizeDirective = ($document) ->
 
             hoveredBar = bar
             hoveredEdge = edge
+
+            if edge == "move"
+                hoveredBar.classList.add("is-move-bar")
+                positionMoveLimitIndicators(bar)
+                return
+
             hoveredBar.classList.add("is-resize-edge")
             hoveredBar.classList.add(if edge == "start" then "is-resize-start" else "is-resize-end")
             rightPanel.classList.add(HOVER_CLASS)
@@ -2274,7 +2326,9 @@ GanttBarResizeDirective = ($document) ->
             finishedDrag = active
             active = null
             root.classList.remove(DRAG_CLASS)
+            root.classList.remove(MOVE_DRAG_CLASS)
             finishedDrag.bar?.classList?.remove("is-dragging")
+            finishedDrag.bar?.classList?.remove("is-move-bar")
             $document.off("mousemove", onDragMouseMove)
             $document.off("mouseup", stopDrag)
             clearLimitIndicator()
@@ -2320,7 +2374,29 @@ GanttBarResizeDirective = ($document) ->
             nextVisualStartDay = active.initialStartDay
             nextVisualEndDay = active.initialEndDay
 
-            if active.edge == "start"
+            minMoveDelta = null
+            maxMoveDelta = null
+
+            if active.edge == "move"
+                minDelta = 1 - active.initialStartDay
+                maxDelta = active.totalDays - active.initialEndDay
+
+                if active.startLimit?.slotIndex?
+                    maxDelta = Math.min(maxDelta, active.startLimit.slotIndex - active.initialStartDay)
+
+                if active.endLimit?.slotIndex?
+                    minDelta = Math.max(minDelta, active.endLimit.slotIndex - active.initialEndDay)
+
+                if minDelta > maxDelta
+                    minDelta = 0
+                    maxDelta = 0
+
+                moveDelta = Math.max(minDelta, Math.min(deltaDays, maxDelta))
+                nextVisualStartDay = active.initialStartDay + moveDelta
+                nextVisualEndDay = active.initialEndDay + moveDelta
+                minMoveDelta = minDelta
+                maxMoveDelta = maxDelta
+            else if active.edge == "start"
                 nextVisualStartDay = Math.max(1, Math.min(active.initialEndDay, active.initialStartDay + deltaDays))
                 if active.limit?.slotIndex?
                     nextVisualStartDay = Math.min(nextVisualStartDay, active.limit.slotIndex)
@@ -2329,12 +2405,23 @@ GanttBarResizeDirective = ($document) ->
                 if active.limit?.slotIndex?
                     nextVisualEndDay = Math.max(nextVisualEndDay, active.limit.slotIndex)
 
-            nextStartDay = Math.round(nextVisualStartDay)
-            nextEndDay = Math.round(nextVisualEndDay)
-            nextStartDay = Math.max(1, Math.min(active.initialEndDay, nextStartDay))
-            nextEndDay = Math.min(active.totalDays, Math.max(active.initialStartDay, nextEndDay))
+            if active.edge == "move"
+                roundedDelta = Math.round(nextVisualStartDay - active.initialStartDay)
+                roundedDelta = Math.max(Math.ceil(minMoveDelta), Math.min(roundedDelta, Math.floor(maxMoveDelta)))
+                nextStartDay = active.initialStartDay + roundedDelta
+                nextEndDay = active.initialEndDay + roundedDelta
+            else
+                nextStartDay = Math.round(nextVisualStartDay)
+                nextEndDay = Math.round(nextVisualEndDay)
+                nextStartDay = Math.max(1, Math.min(active.initialEndDay, nextStartDay))
+                nextEndDay = Math.min(active.totalDays, Math.max(active.initialStartDay, nextEndDay))
 
-            if active.edge == "start" and active.limit?.slotIndex?
+            if active.edge == "move"
+                if active.startLimit?.slotIndex?
+                    nextStartDay = Math.min(nextStartDay, active.startLimit.slotIndex)
+                if active.endLimit?.slotIndex?
+                    nextEndDay = Math.max(nextEndDay, active.endLimit.slotIndex)
+            else if active.edge == "start" and active.limit?.slotIndex?
                 nextStartDay = Math.min(nextStartDay, active.limit.slotIndex)
             else if active.edge == "end" and active.limit?.slotIndex?
                 nextEndDay = Math.max(nextEndDay, active.limit.slotIndex)
@@ -2355,7 +2442,10 @@ GanttBarResizeDirective = ($document) ->
                 active.rowIndex,
                 active.totalDays
             )
-            positionLimitIndicator(active.bar, active.edge)
+            if active.edge == "move"
+                positionMoveLimitIndicators(active.bar)
+            else
+                positionLimitIndicator(active.bar, active.edge)
             positionResizePopup(active.bar, active.startDay, active.endDay, active.edge)
 
         startDrag = (bar, edge, event) ->
@@ -2385,7 +2475,9 @@ GanttBarResizeDirective = ($document) ->
 
             storedRowIndex = parseInt(bar.getAttribute("data-row-index") or "", 10)
             rowIndex = if !isNaN(storedRowIndex) then storedRowIndex else getVisibleRowIndex(rowId)
-            resizeLimit = getResizeLimit(bar, edge)
+            resizeLimit = if edge == "move" then null else getResizeLimit(bar, edge)
+            startLimit = getResizeLimit(bar, "start")
+            endLimit = getResizeLimit(bar, "end")
 
             active = {
                 bar: bar
@@ -2402,12 +2494,21 @@ GanttBarResizeDirective = ($document) ->
                 visualStartDay: initialStartDay
                 visualEndDay: initialEndDay
                 limit: resizeLimit
+                startLimit: startLimit
+                endLimit: endLimit
             }
 
             clearHover()
-            root.classList.add(DRAG_CLASS)
+            if edge == "move"
+                root.classList.add(MOVE_DRAG_CLASS)
+                bar.classList.add("is-move-bar")
+            else
+                root.classList.add(DRAG_CLASS)
             bar.classList.add("is-dragging")
-            positionLimitIndicator(bar, edge)
+            if edge == "move"
+                positionMoveLimitIndicators(bar)
+            else
+                positionLimitIndicator(bar, edge)
             positionResizePopup(bar, active.startDay, active.endDay, edge)
             $document.on("mousemove", onDragMouseMove)
             $document.on("mouseup", stopDrag)
@@ -2425,7 +2526,7 @@ GanttBarResizeDirective = ($document) ->
                 clearHover()
                 return
 
-            edge = resolveResizeEdge(bar, event)
+            edge = resolveResizeEdge(bar, event) or "move"
             setHover(bar, edge)
 
         onMouseDown = (event) ->
@@ -2436,8 +2537,7 @@ GanttBarResizeDirective = ($document) ->
             return if !bar? or bar.classList.contains("is-hidden")
             return if !isBarEditable(bar)
 
-            edge = resolveResizeEdge(bar, event)
-            return if !edge?
+            edge = resolveResizeEdge(bar, event) or "move"
 
             event.preventDefault()
             event.stopPropagation()
@@ -2458,6 +2558,7 @@ GanttBarResizeDirective = ($document) ->
             clearHover()
             edgeIndicator.remove()
             limitIndicator.remove()
+            moveEndLimitIndicator.remove()
             resizePopup.remove()
             stopDrag()
 
