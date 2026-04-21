@@ -284,6 +284,28 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return "" if !startMoment?
         return startMoment.format("MMMM")
 
+    _getTimelinePaddedStart: (startMoment, scale = @_getTimelineScale()) ->
+        return moment().startOf("day") if !startMoment?
+
+        if scale == "weekly"
+            return startMoment.clone().startOf("isoWeek").subtract(1, "week")
+
+        if scale == "monthly"
+            return startMoment.clone().startOf("month").subtract(1, "month")
+
+        return startMoment.clone().subtract(3, "day").startOf("day")
+
+    _getTimelinePaddedEnd: (endMoment, scale = @_getTimelineScale()) ->
+        return moment().startOf("day") if !endMoment?
+
+        if scale == "weekly"
+            return endMoment.clone().endOf("isoWeek").add(1, "week")
+
+        if scale == "monthly"
+            return endMoment.clone().endOf("month").add(1, "month").endOf("month")
+
+        return endMoment.clone().add(3, "day").startOf("day")
+
     _hasAncestorWithClass: (target, className) ->
         node = target
 
@@ -1132,18 +1154,13 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             end = date.clone() if date.isAfter(end)
         )
 
-        if scale == "weekly"
-            computedStart = start.clone().startOf("isoWeek").subtract(1, "week")
-        else if scale == "monthly"
-            computedStart = start.clone().startOf("month").subtract(1, "month")
-        else
-            computedStart = start.clone().subtract(3, "day").startOf("day")
+        computedStart = @_getTimelinePaddedStart(start, scale)
 
         if !@timelineStartAnchor?
             @timelineStartAnchor = computedStart.clone()
 
         start = @timelineStartAnchor.clone()
-        end = end.clone().endOf("month")
+        end = @_getTimelinePaddedEnd(end, scale)
 
         columns = []
 
