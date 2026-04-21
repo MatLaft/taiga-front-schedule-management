@@ -235,8 +235,15 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     isBarEditingLocked: ->
         return !!@barsLocked
 
+    canToggleBarsLock: ->
+        return true if @_canModifyType("epic")
+        return true if @_canModifyType("story")
+        return true if @_canModifyType("task")
+        return false
+
     toggleBarsLock: (event) ->
         @stopToolbarMenuEvent(event)
+        return if !@canToggleBarsLock()
         @barsLocked = !@barsLocked
 
     canUndoBarChange: ->

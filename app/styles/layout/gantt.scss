@@ -123,6 +123,13 @@
         }
     }
 
+    .gantt-toolbar-zoom-button {
+        svg {
+            height: 1.35rem;
+            width: 1.35rem;
+        }
+    }
+
     .gantt-toolbar-lock-button.is-unlocked {
         background: rgba($color-link-primary, .12);
         color: $color-link-primary;
