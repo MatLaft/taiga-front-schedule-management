@@ -68,7 +68,14 @@
         position: relative;
     }
 
-    .gantt-toolbar-zoom-button {
+    .gantt-toolbar-history {
+        display: flex;
+        gap: .35rem;
+    }
+
+    .gantt-toolbar-history-button,
+    .gantt-toolbar-zoom-button,
+    .gantt-toolbar-lock-button {
         align-items: center;
         background: $color-gray100;
         border: 1px solid transparent;
@@ -91,6 +98,17 @@
             background: $color-gray200;
         }
 
+        &:disabled {
+            background: $color-gray100;
+            color: $color-gray400;
+            cursor: default;
+            opacity: .65;
+        }
+
+        &:disabled:hover {
+            background: $color-gray100;
+        }
+
         svg {
             display: block;
             height: 1.2rem;
@@ -103,6 +121,18 @@
             background: rgba($color-link-primary, .12);
             color: $color-link-primary;
         }
+    }
+
+    .gantt-toolbar-lock-button.is-unlocked {
+        background: rgba($color-link-primary, .12);
+        color: $color-link-primary;
+    }
+
+    .gantt-toolbar-lock-button:focus,
+    .gantt-toolbar-lock-button:focus-visible {
+        border-color: transparent;
+        box-shadow: none;
+        outline: 0;
     }
 
     .gantt-toolbar-zoom-menu {

@@ -23,6 +23,31 @@ div.wrapper.gantt(
         .gantt-workspace(tg-gantt-sync-rows tg-gantt-panel-resize tg-gantt-bar-resize ng-if="!ctrl.loading && !ctrl.loadingError")
             .gantt-toolbar
                 .gantt-toolbar-inner
+                    .gantt-toolbar-history
+                        button.gantt-toolbar-history-button(
+                            type="button"
+                            ng-click="ctrl.undoBarChange($event)"
+                            ng-mousedown="ctrl.stopToolbarMenuEvent($event)"
+                            ng-disabled="!ctrl.canUndoBarChange()"
+                            aria-label="Undo changes"
+                            title="Undo changes"
+                        )
+                            svg(xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-arrow-back-up")
+                                path(stroke="none" d="M0 0h24v24H0z" fill="none")
+                                path(d="M9 14l-4 -4l4 -4")
+                                path(d="M5 10h11a4 4 0 1 1 0 8h-1")
+                        button.gantt-toolbar-history-button(
+                            type="button"
+                            ng-click="ctrl.redoBarChange($event)"
+                            ng-mousedown="ctrl.stopToolbarMenuEvent($event)"
+                            ng-disabled="!ctrl.canRedoBarChange()"
+                            aria-label="Redo changes"
+                            title="Redo changes"
+                        )
+                            svg(xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-arrow-forward-up")
+                                path(stroke="none" d="M0 0h24v24H0z" fill="none")
+                                path(d="M15 14l4 -4l-4 -4")
+                                path(d="M19 10h-11a4 4 0 1 0 0 8h1")
                     .gantt-toolbar-zoom(ng-class="{'is-open': ctrl.zoomMenuOpen}")
                         button.gantt-toolbar-zoom-button(
                             type="button"
@@ -61,6 +86,49 @@ div.wrapper.gantt(
                                     ng-click="ctrl.selectZoomOption('monthly', $event)"
                                 )
                                 span(translate="PROJECT.GANTT.ZOOM.MONTHLY")
+                    .gantt-toolbar-lock
+                        button.gantt-toolbar-lock-button(
+                            type="button"
+                            ng-class="{'is-unlocked': !ctrl.barsLocked}"
+                            ng-click="ctrl.toggleBarsLock($event)"
+                            ng-mousedown="ctrl.stopToolbarMenuEvent($event)"
+                            ng-attr-aria-label="{{ctrl.barsLocked ? 'Unlock bar editing' : 'Lock bar editing'}}"
+                            ng-attr-title="{{ctrl.barsLocked ? 'Unlock bar editing' : 'Lock bar editing'}}"
+                        )
+                            svg(
+                                ng-if="ctrl.barsLocked"
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                class="icon icon-tabler icons-tabler-outline icon-tabler-lock"
+                            )
+                                path(stroke="none" d="M0 0h24v24H0z" fill="none")
+                                path(d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6")
+                                path(d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0")
+                                path(d="M8 11v-4a4 4 0 1 1 8 0v4")
+                            svg(
+                                ng-if="!ctrl.barsLocked"
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                class="icon icon-tabler icons-tabler-outline icon-tabler-lock-open"
+                            )
+                                path(stroke="none" d="M0 0h24v24H0z" fill="none")
+                                path(d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -6")
+                                path(d="M11 16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0")
+                                path(d="M8 11v-5a4 4 0 0 1 8 0")
 
             .gantt-panels
                 aside.gantt-left-panel(tg-gantt-column-resize)

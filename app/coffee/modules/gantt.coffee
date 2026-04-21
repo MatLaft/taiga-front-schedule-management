@@ -49,6 +49,11 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @nodeCustomColorByRowId = {}
         @zoomMenuOpen = false
         @selectedZoomOption = "daily"
+        @barsLocked = true
+        @barChangeUndoStack = []
+        @barChangeRedoStack = []
+        @barChangeHistoryLimit = 100
+        @barHistoryBusy = false
 
         @documentClickHandler = (event) => @onDocumentClick(event)
         angular.element(document).on("click", @documentClickHandler)
@@ -226,6 +231,102 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     toggleZoomMenu: (event) ->
         @stopToolbarMenuEvent(event)
         @zoomMenuOpen = !@zoomMenuOpen
+
+    isBarEditingLocked: ->
+        return !!@barsLocked
+
+    toggleBarsLock: (event) ->
+        @stopToolbarMenuEvent(event)
+        @barsLocked = !@barsLocked
+
+    canUndoBarChange: ->
+        return false if @barHistoryBusy
+        return @barChangeUndoStack.length > 0
+
+    canRedoBarChange: ->
+        return false if @barHistoryBusy
+        return @barChangeRedoStack.length > 0
+
+    _pushBarChangeHistoryEntry: (stack, entry) ->
+        return if !stack? or !entry?
+
+        stack.push(angular.copy(entry))
+
+        if @barChangeHistoryLimit > 0 and stack.length > @barChangeHistoryLimit
+            stack.shift()
+
+    _registerBarChangeHistoryEntry: (entry) ->
+        return if !entry?
+        @_pushBarChangeHistoryEntry(@barChangeUndoStack, entry)
+        @barChangeRedoStack = []
+
+    _buildBarChangeHistoryEntry: (rowId, startField, previousStart, previousDue, nextStart, nextDue) ->
+        return {
+            rowId: rowId
+            startField: startField
+            previous: {
+                start: previousStart
+                due: previousDue
+            }
+            next: {
+                start: nextStart
+                due: nextDue
+            }
+        }
+
+    _applyBarChangeHistoryEntry: (entry, direction) ->
+        return @q.reject() if !entry?
+
+        targetState = if direction == "undo" then entry.previous else entry.next
+        return @q.reject() if !targetState?
+
+        return @saveBarDateValues(entry.rowId, targetState.start, targetState.due, {
+            skipHistory: true
+            notify: false
+            startField: entry.startField
+        })
+
+    undoBarChange: (event) ->
+        @stopToolbarMenuEvent(event)
+        return @q.when() if @barHistoryBusy
+
+        entry = @barChangeUndoStack.pop()
+        return @q.when() if !entry?
+
+        @barHistoryBusy = true
+        return @_applyBarChangeHistoryEntry(entry, "undo").then =>
+            @_pushBarChangeHistoryEntry(@barChangeRedoStack, entry)
+            @confirm.notify("success")
+            return
+        , (errorData) =>
+            @barChangeUndoStack.push(entry)
+            message = @_extractApiErrorMessage(errorData)
+            @confirm.notify("error", message)
+            return @q.reject(errorData)
+        .finally =>
+            @barHistoryBusy = false
+            @scope.$evalAsync()
+
+    redoBarChange: (event) ->
+        @stopToolbarMenuEvent(event)
+        return @q.when() if @barHistoryBusy
+
+        entry = @barChangeRedoStack.pop()
+        return @q.when() if !entry?
+
+        @barHistoryBusy = true
+        return @_applyBarChangeHistoryEntry(entry, "redo").then =>
+            @_pushBarChangeHistoryEntry(@barChangeUndoStack, entry)
+            @confirm.notify("success")
+            return
+        , (errorData) =>
+            @barChangeRedoStack.push(entry)
+            message = @_extractApiErrorMessage(errorData)
+            @confirm.notify("error", message)
+            return @q.reject(errorData)
+        .finally =>
+            @barHistoryBusy = false
+            @scope.$evalAsync()
 
     _getZoomCookieName: ->
         return buildGanttCookieName("layout_zoom", @scope)
@@ -405,7 +506,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             @confirm.notify("error")
             return @q.reject()
 
-    saveBarDateRange: (rowId, startDay, endDay) ->
+    saveBarDateRange: (rowId, startDay, endDay, options = {}) ->
         row = @rowNodesById[rowId]
         return @q.reject() if !row?.item? or !row.canEdit
 
@@ -416,13 +517,33 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         dueMoment = @_getTimelineMomentBySlotIndex(normalizedEndDay)
         return @q.reject() if !startMoment? or !dueMoment?
 
-        startField = @_getStartEditableField(row.item)
         nextStartValue = startMoment.format("YYYY-MM-DD")
         nextDueValue = dueMoment.format("YYYY-MM-DD")
+        return @saveBarDateValues(rowId, nextStartValue, nextDueValue, options)
+
+    saveBarDateValues: (rowId, startValue, dueValue, options = {}) ->
+        row = @rowNodesById[rowId]
+        return @q.reject() if !row?.item? or !row.canEdit
+        return @q.reject() if @barHistoryBusy and !options.skipHistory
+
+        startField = options.startField or @_getStartEditableField(row.item)
+        nextStartValue = @_normalizeDateForInput(startValue)
+        nextDueValue = @_normalizeDateForInput(dueValue)
         currentStartValue = @_normalizeDateForInput(row.item[startField])
         currentDueValue = @_normalizeDateForInput(row.item.due_date)
 
         return @q.when() if currentStartValue == nextStartValue and currentDueValue == nextDueValue
+
+        historyEntry = null
+        if !options.skipHistory
+            historyEntry = @_buildBarChangeHistoryEntry(
+                rowId
+                startField
+                currentStartValue
+                currentDueValue
+                nextStartValue
+                nextDueValue
+            )
 
         affectedEntities = @_collectAffectedEntitiesForDateSave(row)
 
@@ -433,20 +554,22 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @repo.save(row.item, true, {include_schedule: true}).then =>
             delete @savingRows[rowId]
             return @_reloadDateAffectedEntities(affectedEntities).then =>
-                @confirm.notify("success")
+                @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
+                @confirm.notify("success") if options.notify != false
                 return
             , =>
+                @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
                 @timelineStartAnchor = null
                 @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
                 @scope.$evalAsync()
-                @confirm.notify("success")
+                @confirm.notify("success") if options.notify != false
                 return
         , (errorData) =>
             row.item.revert()
             delete @savingRows[rowId]
             message = @_extractApiErrorMessage(errorData)
-            @confirm.notify("error", message)
-            return @q.reject()
+            @confirm.notify("error", message) if options.notify != false
+            return @q.reject(errorData)
 
     canCreateBarDateRange: (rowId) ->
         row = @rowNodesById[rowId]
@@ -2196,6 +2319,13 @@ GanttBarResizeDirective = ($document) ->
             return false if !bar?
             return bar.getAttribute("data-can-edit") == "true"
 
+        isBarInteractionLocked = ->
+            ctrl = $scope.ctrl
+            return false if !ctrl?
+            return true if ctrl.barHistoryBusy
+            return ctrl.isBarEditingLocked() if _.isFunction(ctrl.isBarEditingLocked)
+            return !!ctrl.barsLocked
+
         getBarModel = (rowId) ->
             return null if !rowId?
 
@@ -2608,6 +2738,7 @@ GanttBarResizeDirective = ($document) ->
 
         startDrag = (bar, edge, event) ->
             return if !bar?
+            return if isBarInteractionLocked()
             svg = getSvgForBar(bar)
             return if !svg?
 
@@ -2672,6 +2803,7 @@ GanttBarResizeDirective = ($document) ->
             $document.on("mouseup", stopDrag)
 
         startCreateBar = (event) ->
+            return false if isBarInteractionLocked()
             return false if !isEventInsideTimelineGrid(event)
 
             svg = getBarsSvg()
@@ -2736,6 +2868,9 @@ GanttBarResizeDirective = ($document) ->
 
         onHoverMouseMove = (event) ->
             return if active?
+            if isBarInteractionLocked()
+                clearHover()
+                return
 
             bar = getNearestBarElement(event.target)
 
@@ -2753,6 +2888,7 @@ GanttBarResizeDirective = ($document) ->
         onMouseDown = (event) ->
             return if event.button? and event.button != 0
             return if active?
+            return if isBarInteractionLocked()
 
             bar = getNearestBarElement(event.target)
 
@@ -2775,6 +2911,12 @@ GanttBarResizeDirective = ($document) ->
             return if active?
             clearHover()
 
+        unwatchBarLock = $scope.$watch("ctrl.barsLocked", (locked) ->
+            return if !locked
+            stopDrag()
+            clearHover()
+        )
+
         rightPanel.addEventListener("mousemove", onHoverMouseMove)
         rightPanel.addEventListener("mousedown", onMouseDown)
         rightPanel.addEventListener("mouseleave", onMouseLeave)
@@ -2789,6 +2931,7 @@ GanttBarResizeDirective = ($document) ->
             moveEndLimitIndicator.remove()
             resizePopup.remove()
             stopDrag()
+            unwatchBarLock?()
 
     return {link: link}
 
