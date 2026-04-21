@@ -660,7 +660,7 @@ div.wrapper.gantt(
                                             ng-attr-data-can-edit="{{bar.canEdit ? 'true' : 'false'}}"
                                             ng-attr-data-start-day="{{bar.startDay}}"
                                             ng-attr-data-end-day="{{bar.endDay}}"
-                                            shape-rendering="crispEdges"
+                                            ng-attr-shape-rendering="{{bar.barType == 'epic' ? 'geometricPrecision' : 'crispEdges'}}"
                                             ng-attr-d="{{bar.pathD}}"
                                         )
                                             title {{ bar.label }}
