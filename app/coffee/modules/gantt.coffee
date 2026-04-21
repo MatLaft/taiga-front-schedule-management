@@ -2116,7 +2116,15 @@ GanttBarResizeDirective = ($document) ->
             normalizedSlot = 1 if isNaN(normalizedSlot)
             normalizedSlot = Math.max(1, normalizedSlot)
 
-            return timelineStart.clone().add(normalizedSlot - 1, "day").format("DD MMMM YYYY")
+            dateFormat = translateResizePopupText("PROJECT.GANTT.RESIZE_POPUP.DATE_FORMAT", "DD MMMM YYYY")
+            return timelineStart.clone().add(normalizedSlot - 1, "day").format(dateFormat)
+
+        translateResizePopupText = (key, fallback) ->
+            translator = $scope.ctrl?.translate
+            translated = if translator?.instant? then translator.instant(key) else null
+
+            return fallback if !translated? or translated == key
+            return translated
 
         positionResizePopup = (bar, startDay, endDay, edge) ->
             return clearResizePopup() if !bar?
@@ -2125,8 +2133,10 @@ GanttBarResizeDirective = ($document) ->
             barRect = bar.getBoundingClientRect()
             return clearResizePopup() if barRect.width <= 0 or barRect.height <= 0
 
-            resizePopupStart.textContent = "Come\u00e7o: #{formatResizePopupDate(startDay)}"
-            resizePopupEnd.textContent = "Fim: #{formatResizePopupDate(endDay)}"
+            startLabel = translateResizePopupText("PROJECT.GANTT.RESIZE_POPUP.START", "Start")
+            endLabel = translateResizePopupText("PROJECT.GANTT.RESIZE_POPUP.END", "End")
+            resizePopupStart.textContent = "#{startLabel}: #{formatResizePopupDate(startDay)}"
+            resizePopupEnd.textContent = "#{endLabel}: #{formatResizePopupDate(endDay)}"
             resizePopup.classList.add("is-visible")
 
             popupWidth = resizePopup.offsetWidth or 0

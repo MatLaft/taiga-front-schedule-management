@@ -936,6 +936,11 @@
                 "DAILY": "Diário",
                 "WEEKLY": "Semanal",
                 "MONTHLY": "Mensal"
+            },
+            "RESIZE_POPUP": {
+                "START": "Começo",
+                "END": "Fim",
+                "DATE_FORMAT": "DD MMMM YYYY"
             }
         },
         "NAVIGATION": {
