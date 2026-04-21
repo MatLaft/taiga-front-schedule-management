@@ -2270,6 +2270,17 @@ GanttBarResizeDirective = ($document) ->
             clearLimitIndicator()
             clearResizePopup()
 
+            if finishedDrag.bar?
+                finishedDrag.bar.setAttribute("data-start-day", finishedDrag.startDay)
+                finishedDrag.bar.setAttribute("data-end-day", finishedDrag.endDay)
+                renderBarGeometry(
+                    finishedDrag.bar,
+                    finishedDrag.startDay,
+                    finishedDrag.endDay,
+                    finishedDrag.rowIndex,
+                    finishedDrag.totalDays
+                )
+
             changed = finishedDrag.startDay != finishedDrag.initialStartDay or finishedDrag.endDay != finishedDrag.initialEndDay
             return if !changed
 
@@ -2295,27 +2306,45 @@ GanttBarResizeDirective = ($document) ->
         onDragMouseMove = (event) ->
             return if !active?
 
-            deltaDays = Math.round((event.clientX - active.startX) / active.dayWidthPx)
-            nextStartDay = active.initialStartDay
-            nextEndDay = active.initialEndDay
+            deltaDays = (event.clientX - active.startX) / active.dayWidthPx
+            nextVisualStartDay = active.initialStartDay
+            nextVisualEndDay = active.initialEndDay
 
             if active.edge == "start"
-                nextStartDay = Math.max(1, Math.min(active.initialEndDay, active.initialStartDay + deltaDays))
+                nextVisualStartDay = Math.max(1, Math.min(active.initialEndDay, active.initialStartDay + deltaDays))
                 if active.limit?.slotIndex?
-                    nextStartDay = Math.min(nextStartDay, active.limit.slotIndex)
+                    nextVisualStartDay = Math.min(nextVisualStartDay, active.limit.slotIndex)
             else
-                nextEndDay = Math.min(active.totalDays, Math.max(active.initialStartDay, active.initialEndDay + deltaDays))
+                nextVisualEndDay = Math.min(active.totalDays, Math.max(active.initialStartDay, active.initialEndDay + deltaDays))
                 if active.limit?.slotIndex?
-                    nextEndDay = Math.max(nextEndDay, active.limit.slotIndex)
+                    nextVisualEndDay = Math.max(nextVisualEndDay, active.limit.slotIndex)
 
-            return if nextStartDay == active.startDay and nextEndDay == active.endDay
+            nextStartDay = Math.round(nextVisualStartDay)
+            nextEndDay = Math.round(nextVisualEndDay)
+            nextStartDay = Math.max(1, Math.min(active.initialEndDay, nextStartDay))
+            nextEndDay = Math.min(active.totalDays, Math.max(active.initialStartDay, nextEndDay))
+
+            if active.edge == "start" and active.limit?.slotIndex?
+                nextStartDay = Math.min(nextStartDay, active.limit.slotIndex)
+            else if active.edge == "end" and active.limit?.slotIndex?
+                nextEndDay = Math.max(nextEndDay, active.limit.slotIndex)
+
+            return if nextVisualStartDay == active.visualStartDay and nextVisualEndDay == active.visualEndDay
 
             active.startDay = nextStartDay
             active.endDay = nextEndDay
+            active.visualStartDay = nextVisualStartDay
+            active.visualEndDay = nextVisualEndDay
 
             active.bar.setAttribute("data-start-day", active.startDay)
             active.bar.setAttribute("data-end-day", active.endDay)
-            renderBarGeometry(active.bar, active.startDay, active.endDay, active.rowIndex, active.totalDays)
+            renderBarGeometry(
+                active.bar,
+                active.visualStartDay,
+                active.visualEndDay,
+                active.rowIndex,
+                active.totalDays
+            )
             positionLimitIndicator(active.bar, active.edge)
             positionResizePopup(active.bar, active.startDay, active.endDay, active.edge)
 
@@ -2360,6 +2389,8 @@ GanttBarResizeDirective = ($document) ->
                 initialEndDay: initialEndDay
                 startDay: initialStartDay
                 endDay: initialEndDay
+                visualStartDay: initialStartDay
+                visualEndDay: initialEndDay
                 limit: resizeLimit
             }
 
