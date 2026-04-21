@@ -45,6 +45,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @colorList = getDefaulColorList()
         @activeColorMenuRowId = null
         @nodeCustomColorByRowId = {}
+        @zoomMenuOpen = false
+        @selectedZoomOption = "daily"
 
         @documentClickHandler = (event) => @onDocumentClick(event)
         angular.element(document).on("click", @documentClickHandler)
@@ -214,17 +216,48 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         event.preventDefault() if !isCustomColorInput
         event.stopPropagation()
 
+    stopToolbarMenuEvent: (event) ->
+        return if !event?
+        event.stopPropagation()
+
+    toggleZoomMenu: (event) ->
+        @stopToolbarMenuEvent(event)
+        @zoomMenuOpen = !@zoomMenuOpen
+
+    selectZoomOption: (option, event) ->
+        @stopToolbarMenuEvent(event)
+        return if !option?
+
+        validOptions = ["daily", "weekly", "monthly"]
+        return if validOptions.indexOf(option) == -1
+
+        @selectedZoomOption = option
+
+    _hasAncestorWithClass: (target, className) ->
+        node = target
+
+        while node?
+            return true if node.classList?.contains(className)
+            node = node.parentNode
+
+        return false
+
     onDocumentClick: (event) ->
-        return if !@activeColorMenuRowId?
+        shouldRefreshScope = false
 
         target = event?.target
-        while target?
-            if target.classList?.contains("gantt-row-type-icon")
-                return
-            target = target.parentNode
 
-        @activeColorMenuRowId = null
-        @scope.$evalAsync()
+        if @activeColorMenuRowId?
+            if !@_hasAncestorWithClass(target, "gantt-row-type-icon")
+                @activeColorMenuRowId = null
+                shouldRefreshScope = true
+
+        if @zoomMenuOpen
+            if !@_hasAncestorWithClass(target, "gantt-toolbar-zoom")
+                @zoomMenuOpen = false
+                shouldRefreshScope = true
+
+        @scope.$evalAsync() if shouldRefreshScope
 
     toggleNodeColorMenu: (event, row) ->
         @stopColorMenuEvent(event)
