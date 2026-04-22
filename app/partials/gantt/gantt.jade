@@ -20,7 +20,13 @@ div.wrapper.gantt(
         p(ng-if="ctrl.loading") Loading gantt...
         p(ng-if="ctrl.loadingError") Unable to load gantt data.
 
-        .gantt-workspace(tg-gantt-sync-rows tg-gantt-panel-resize tg-gantt-bar-resize ng-if="!ctrl.loading && !ctrl.loadingError")
+        .gantt-workspace(
+            tg-gantt-sync-rows
+            tg-gantt-panel-resize
+            tg-gantt-bar-resize
+            ng-class="{'is-linking-gantt-bars': ctrl.barLinkModeActive}"
+            ng-if="!ctrl.loading && !ctrl.loadingError"
+        )
             .gantt-toolbar
                 .gantt-toolbar-inner
                     .gantt-toolbar-history
@@ -62,6 +68,19 @@ div.wrapper.gantt(
                                 path(stroke="none" d="M0 0h24v24H0z" fill="none")
                                 path(d="M11 7l6 6")
                                 path(d="M4 16l11.7 -11.7a1 1 0 0 1 1.4 0l2.6 2.6a1 1 0 0 1 0 1.4l-11.7 11.7h-4v-4")
+                    .gantt-toolbar-link
+                        button.gantt-toolbar-link-button(
+                            type="button"
+                            ng-class="{'is-active': ctrl.barLinkModeActive}"
+                            ng-click="ctrl.toggleBarLinkMode($event)"
+                            ng-mousedown="ctrl.stopToolbarMenuEvent($event)"
+                            ng-disabled="!ctrl.canUseBarLinkMode()"
+                            ng-attr-aria-label="{{'PROJECT.GANTT.LINK_MODE' | translate}}"
+                            ng-attr-title="{{'PROJECT.GANTT.LINK_MODE' | translate}}"
+                        )
+                            svg(xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="icon icon-tabler icons-tabler-filled icon-tabler-arrow-guide")
+                                path(stroke="none" d="M0 0h24v24H0z" fill="none")
+                                path(d="M18.707 3.293l3 3q .054 .053 .097 .112l.071 .11l.054 .114l.035 .105l.03 .148l.006 .118l-.003 .075l-.017 .126l-.03 .111l-.044 .111l-.052 .098l-.067 .096l-.08 .09l-3 3a1 1 0 0 1 -1.414 -1.414l1.292 -1.293h-4.585a1 1 0 0 0 -1 1v8a3 3 0 0 1 -3 3h-2.171a3.001 3.001 0 0 1 -5.829 -1l.005 -.176a3 3 0 0 1 5.825 -.824h2.17a1 1 0 0 0 1 -1v-8a3 3 0 0 1 3 -3h4.585l-1.292 -1.293a1 1 0 0 1 -.083 -1.32l.083 -.094a1 1 0 0 1 1.414 0")
                     .gantt-toolbar-zoom(ng-class="{'is-open': ctrl.zoomMenuOpen}")
                         button.gantt-toolbar-zoom-button(
                             type="button"
@@ -631,10 +650,24 @@ div.wrapper.gantt(
                                     ng-attr-data-total-days="{{ctrl.timeline.totalDays}}"
                                     preserveAspectRatio="none"
                                 )
+                                    g.gantt-link-layer
+                                        path.gantt-link-path(
+                                            ng-repeat="link in ctrl.barLinks track by link.id"
+                                            ng-attr-data-link-id="{{link.id}}"
+                                            ng-attr-data-source-row-id="{{link.sourceRowId}}"
+                                            ng-attr-data-target-row-id="{{link.targetRowId}}"
+                                        )
+                                        path.gantt-link-arrowhead(
+                                            ng-repeat="link in ctrl.barLinks track by link.id"
+                                            ng-attr-data-link-id="{{link.id}}"
+                                            ng-attr-data-source-row-id="{{link.sourceRowId}}"
+                                            ng-attr-data-target-row-id="{{link.targetRowId}}"
+                                        )
                                     g(ng-repeat="bar in ctrl.ganttBars track by bar.rowId")
                                         rect.gantt-bar(
                                             ng-if="bar.shape == 'rounded'"
                                             class="gantt-bar-{{bar.barType}}"
+                                            ng-class="{'is-link-source': ctrl.isPendingBarLinkSource(bar.rowId)}"
                                             ng-style="bar.style"
                                             ng-attr-data-gantt-row-id="{{bar.rowId}}"
                                             ng-attr-data-bar-type="{{bar.barType}}"
@@ -654,6 +687,7 @@ div.wrapper.gantt(
                                         path.gantt-bar(
                                             ng-if="bar.shape != 'rounded'"
                                             class="gantt-bar-{{bar.barType}}"
+                                            ng-class="{'is-link-source': ctrl.isPendingBarLinkSource(bar.rowId)}"
                                             ng-style="bar.style"
                                             ng-attr-data-gantt-row-id="{{bar.rowId}}"
                                             ng-attr-data-bar-type="{{bar.barType}}"

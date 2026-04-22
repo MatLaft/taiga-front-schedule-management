@@ -52,6 +52,10 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @selectedZoomOption = "daily"
         @barsLocked = true
         @colorPickerModeActive = false
+        @barLinkModeActive = false
+        @pendingBarLinkSourceRowId = null
+        @barLinks = []
+        @nextBarLinkId = 1
         @barChangeUndoStack = []
         @barChangeRedoStack = []
         @barChangeHistoryLimit = 100
@@ -131,6 +135,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         )
         @timeline = @_buildTimeline(flatRows)
         @ganttBars = @_buildBars(flatRows, @timeline)
+        @_pruneBarLinks()
 
     _normalizeDateForInput: (dateValue) ->
         return null if !dateValue
@@ -139,6 +144,24 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return dateValue if !parsed.isValid()
 
         return parsed.format("YYYY-MM-DD")
+
+    _pruneBarLinks: ->
+        validBarRowsById = {}
+
+        _.each(@ganttBars or [], (bar) ->
+            validBarRowsById[bar.rowId] = true if bar?.rowId?
+        )
+
+        @barLinks = _.filter(@barLinks or [], (link) ->
+            return validBarRowsById[link?.sourceRowId] and validBarRowsById[link?.targetRowId]
+        )
+
+        if @pendingBarLinkSourceRowId? and !validBarRowsById[@pendingBarLinkSourceRowId]
+            @pendingBarLinkSourceRowId = null
+
+        if (@ganttBars or []).length < 2
+            @barLinkModeActive = false
+            @pendingBarLinkSourceRowId = null
 
     _getStartEditableField: (item) ->
         return "actual_start" if item?.actual_start?
@@ -296,20 +319,78 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     canUseColorPickerMode: ->
         return @canToggleBarsLock()
 
+    canUseBarLinkMode: ->
+        return (@ganttBars or []).length > 1
+
+    _deactivateColorPickerMode: ->
+        @colorPickerModeActive = false
+        delete @colorMenuOpenUpwardByRowId[@activeColorMenuRowId] if @activeColorMenuRowId?
+        @activeColorMenuRowId = null
+
+    _deactivateBarLinkMode: ->
+        @barLinkModeActive = false
+        @pendingBarLinkSourceRowId = null
+
     toggleColorPickerMode: (event) ->
         @stopToolbarMenuEvent(event)
         return if !@canUseColorPickerMode()
 
-        @colorPickerModeActive = !@colorPickerModeActive
+        shouldActivate = !@colorPickerModeActive
 
-        if !@colorPickerModeActive
-            delete @colorMenuOpenUpwardByRowId[@activeColorMenuRowId] if @activeColorMenuRowId?
-            @activeColorMenuRowId = null
+        if !shouldActivate
+            @_deactivateColorPickerMode()
+            return
+
+        @barsLocked = true
+        @_deactivateBarLinkMode()
+        @colorPickerModeActive = true
+
+    toggleBarLinkMode: (event) ->
+        @stopToolbarMenuEvent(event)
+        return if !@canUseBarLinkMode()
+
+        shouldActivate = !@barLinkModeActive
+
+        if !shouldActivate
+            @_deactivateBarLinkMode()
+            return
+
+        @barsLocked = true
+        @_deactivateColorPickerMode()
+        @barLinkModeActive = true
+        @zoomMenuOpen = false
+
+    isPendingBarLinkSource: (rowId) ->
+        return @barLinkModeActive and @pendingBarLinkSourceRowId == rowId
+
+    registerGanttBarLinkClick: (rowId) ->
+        return false if !@barLinkModeActive
+        return false if !rowId?
+        return false if !@rowNodesById[rowId]?
+
+        if !@pendingBarLinkSourceRowId?
+            @pendingBarLinkSourceRowId = rowId
+            return true
+
+        return true if @pendingBarLinkSourceRowId == rowId
+
+        @barLinks.push({
+            id: "gantt-link-#{@nextBarLinkId}"
+            sourceRowId: @pendingBarLinkSourceRowId
+            targetRowId: rowId
+        })
+        @nextBarLinkId += 1
+        @pendingBarLinkSourceRowId = null
+        return true
 
     toggleBarsLock: (event) ->
         @stopToolbarMenuEvent(event)
         return if !@canToggleBarsLock()
         @barsLocked = !@barsLocked
+
+        if !@barsLocked
+            @_deactivateColorPickerMode()
+            @_deactivateBarLinkMode()
 
     canUndoBarChange: ->
         return false if @barHistoryBusy
@@ -2088,6 +2169,139 @@ GanttSyncRowsDirective = ->
                 ry: 0.16
             }
 
+        buildDirectLinkRoute = (sourceX, sourceY, targetX, targetY, totalDays, turnGap) ->
+            turnX = Math.min(totalDays, sourceX + turnGap)
+            verticalDelta = targetY - sourceY
+
+            if Math.abs(verticalDelta) <= 0.001
+                return {
+                    direction: if targetX >= sourceX then 1 else -1
+                    path: "M#{sourceX},#{sourceY}L#{targetX},#{targetY}"
+                }
+
+            return {
+                direction: if targetX >= sourceX then 1 else -1
+                path: "M#{sourceX},#{sourceY}L#{turnX},#{sourceY}L#{turnX},#{targetY}L#{targetX},#{targetY}"
+            }
+
+        buildCloseLinkRoute = (sourceX, sourceY, targetX, targetTopY, targetBottomY, targetY, totalDays, xScale, yScale) ->
+            targetTipGap = 5 / yScale
+            targetTipY = if sourceY <= targetY
+                Math.max(0, targetTopY - targetTipGap)
+            else
+                targetBottomY + targetTipGap
+            verticalDelta = targetTipY - sourceY
+
+            if Math.abs(verticalDelta) <= 0.001
+                return {
+                    direction: "right"
+                    tipX: targetX
+                    tipY: targetTipY
+                    path: "M#{sourceX},#{sourceY}L#{targetX},#{targetTipY}"
+                }
+
+            verticalDirection = if verticalDelta >= 0 then 1 else -1
+            path = "M#{sourceX},#{sourceY}L#{targetX},#{sourceY}L#{targetX},#{targetTipY}"
+
+            return {
+                direction: if verticalDirection > 0 then "down" else "up"
+                tipX: targetX
+                tipY: targetTipY
+                path: path
+            }
+
+        buildLinkRoute = (sourceX, sourceY, targetX, targetY, targetTopY, targetBottomY, totalDays, xScale, yScale) ->
+            closeTurnGap = getBarDetailUnits(0.3)
+            shouldUseCloseRoute = Math.abs(targetY - sourceY) > 0.001 and targetX - sourceX <= closeTurnGap
+            if shouldUseCloseRoute
+                closeTargetX = Math.min(totalDays, sourceX + closeTurnGap)
+                return buildCloseLinkRoute(sourceX, sourceY, closeTargetX, targetTopY, targetBottomY, targetY, totalDays, xScale, yScale)
+
+            route = buildDirectLinkRoute(sourceX, sourceY, targetX, targetY, totalDays, closeTurnGap)
+            route.tipX = targetX
+            route.tipY = targetY
+            return route
+
+        buildArrowheadPath = (tipX, tipY, direction, xScale, yScale) ->
+            arrowHeadBackX = 5 / xScale
+            arrowHalfHeightY = 5 / yScale
+            arrowHeadBackY = 5 / yScale
+            arrowHalfWidthX = 5 / xScale
+
+            if direction == "down" or direction == "up"
+                verticalDirection = if direction == "down" then 1 else -1
+                headBaseY = tipY - (verticalDirection * arrowHeadBackY)
+                return "M#{tipX - arrowHalfWidthX},#{headBaseY}L#{tipX},#{tipY}L#{tipX + arrowHalfWidthX},#{headBaseY}"
+
+            horizontalDirection = if direction == "left" or direction == -1 then -1 else 1
+            headBaseX = tipX - (horizontalDirection * arrowHeadBackX)
+
+            return "M#{headBaseX},#{tipY - arrowHalfHeightY}L#{tipX},#{tipY}L#{headBaseX},#{tipY + arrowHalfHeightY}"
+
+        syncLinks = (barsSvg, barsByRowId, totalDays, visibleRowsCount) ->
+            return if !barsSvg?
+
+            linkPaths = Array.from(barsSvg.querySelectorAll(".gantt-link-path[data-link-id][data-source-row-id][data-target-row-id]"))
+            arrowheads = Array.from(barsSvg.querySelectorAll(".gantt-link-arrowhead[data-link-id]"))
+            arrowheadsByLinkId = {}
+            _.each(arrowheads, (arrowhead) ->
+                linkId = arrowhead.getAttribute("data-link-id")
+                arrowheadsByLinkId[linkId] = arrowhead if linkId?
+            )
+            endpointGap = getBarDetailUnits(0.08)
+            svgRect = barsSvg.getBoundingClientRect()
+            xScale = svgRect.width / totalDays
+            yScale = svgRect.height / Math.max(1, visibleRowsCount)
+
+            hideLink = (linkPath, arrowhead) ->
+                linkPath.classList.add("is-hidden")
+                arrowhead?.classList?.add("is-hidden")
+
+            if !isFinite(xScale) or !isFinite(yScale) or xScale <= 0 or yScale <= 0
+                _.each(linkPaths, (linkPath) ->
+                    hideLink(linkPath, arrowheadsByLinkId[linkPath.getAttribute("data-link-id")])
+                )
+                return
+
+            linkPaths.forEach (linkPath) ->
+                linkId = linkPath.getAttribute("data-link-id")
+                arrowhead = arrowheadsByLinkId[linkId]
+                sourceRowId = linkPath.getAttribute("data-source-row-id")
+                targetRowId = linkPath.getAttribute("data-target-row-id")
+                sourceBar = barsByRowId[sourceRowId]
+                targetBar = barsByRowId[targetRowId]
+
+                if !sourceBar? or !targetBar? or !arrowhead?
+                    hideLink(linkPath, arrowhead)
+                    return
+
+                sourceStartDay = parseFloat(sourceBar.getAttribute("data-start-day") or "1")
+                sourceEndDay = parseFloat(sourceBar.getAttribute("data-end-day") or "#{sourceStartDay}")
+                targetStartDay = parseFloat(targetBar.getAttribute("data-start-day") or "1")
+                sourceRowIndex = parseFloat(sourceBar.getAttribute("data-row-index") or "0")
+                targetRowIndex = parseFloat(targetBar.getAttribute("data-row-index") or "0")
+
+                if !isFinite(sourceEndDay) or !isFinite(targetStartDay) or !isFinite(sourceRowIndex) or !isFinite(targetRowIndex)
+                    hideLink(linkPath, arrowhead)
+                    return
+
+                sourceX = Math.min(totalDays, sourceEndDay + endpointGap)
+                sourceY = sourceRowIndex + 0.5
+                targetX = Math.max(0, targetStartDay - 1 - endpointGap)
+                targetY = targetRowIndex + 0.5
+                targetShape = targetBar.getAttribute("data-shape") or ""
+                targetBarType = targetBar.getAttribute("data-bar-type") or ""
+                targetTopOffset = if targetShape == "rounded" then 0.28 else 0.22
+                targetBottomOffset = if targetShape == "rounded" then 0.78 else if targetBarType == "epic" then 0.74 else 0.58
+                targetTopY = targetRowIndex + targetTopOffset
+                targetBottomY = targetRowIndex + targetBottomOffset
+                linkRoute = buildLinkRoute(sourceX, sourceY, targetX, targetY, targetTopY, targetBottomY, totalDays, xScale, yScale)
+
+                linkPath.setAttribute("d", linkRoute.path)
+                arrowhead.setAttribute("d", buildArrowheadPath(linkRoute.tipX, linkRoute.tipY, linkRoute.direction, xScale, yScale))
+                linkPath.classList.remove("is-hidden")
+                arrowhead.classList.remove("is-hidden")
+
         syncBars = (visibleRowMap, visibleRowsCount) ->
             barsData = getBarsData()
             barsSvg = barsData.barsSvg
@@ -2095,6 +2309,7 @@ GanttSyncRowsDirective = ->
             return if !barsSvg?
 
             barsModelByRowId = getBarsModelByRowId()
+            barsByRowId = {}
 
             totalDays = parseFloat(barsSvg.getAttribute("data-total-days") or "0") or 0
             totalDays = Math.max(1, totalDays)
@@ -2137,6 +2352,9 @@ GanttSyncRowsDirective = ->
                     bar.setAttribute("d", path)
 
                 bar.classList.remove("is-hidden")
+                barsByRowId[rowId] = bar
+
+            syncLinks(barsSvg, barsByRowId, totalDays, visibleRowsCount)
 
         updateVisibleRows = ->
             rows = Array.from(leftPanel.querySelectorAll(".gantt-tree-row"))
@@ -2163,6 +2381,9 @@ GanttSyncRowsDirective = ->
         scheduleUpdate = _.debounce(updateVisibleRows, 10)
         onWindowResize = _.debounce(updateVisibleRows, 25)
         unwatchBars = $scope.$watchCollection("ctrl.ganttBars", ->
+            _.defer(scheduleUpdate)
+        )
+        unwatchBarLinks = $scope.$watchCollection("ctrl.barLinks", ->
             _.defer(scheduleUpdate)
         )
         unwatchTimelineStart = $scope.$watch("ctrl.timeline.start", ->
@@ -2216,6 +2437,7 @@ GanttSyncRowsDirective = ->
             window.removeEventListener("resize", onWindowResize)
             observer.disconnect() if observer?
             unwatchBars?()
+            unwatchBarLinks?()
             unwatchTimelineStart?()
             unwatchTimelineDays?()
 
@@ -2243,6 +2465,7 @@ GanttBarResizeDirective = ($document) ->
         INDICATOR_PAD_Y_PX = 4
         hoveredBar = null
         hoveredEdge = null
+        linkHoveredBar = null
         edgeIndicator = document.createElementNS(SVG_NS, "svg")
         edgeIndicator.setAttribute("class", "gantt-edge-indicator")
         edgeIndicator.style.width = "0"
@@ -2460,6 +2683,9 @@ GanttBarResizeDirective = ($document) ->
             return ctrl.isBarEditingLocked() if _.isFunction(ctrl.isBarEditingLocked)
             return !!ctrl.barsLocked
 
+        isBarLinkModeActive = ->
+            return !!$scope.ctrl?.barLinkModeActive
+
         getBarModel = (rowId) ->
             return null if !rowId?
 
@@ -2629,6 +2855,19 @@ GanttBarResizeDirective = ($document) ->
             edgeIndicator.classList.remove("is-start")
             edgeIndicator.classList.remove("is-end")
             clearLimitIndicator()
+
+        clearLinkHover = ->
+            linkHoveredBar?.classList?.remove("is-link-target")
+            linkHoveredBar = null
+
+        setLinkHover = (bar) ->
+            return if linkHoveredBar == bar
+            clearHover()
+            clearLinkHover()
+            return if !bar?
+
+            linkHoveredBar = bar
+            linkHoveredBar.classList.add("is-link-target")
 
         buildIndicatorLinePath = (height, edge) ->
             top = 1
@@ -3002,6 +3241,19 @@ GanttBarResizeDirective = ($document) ->
 
         onHoverMouseMove = (event) ->
             return if active?
+
+            if isBarLinkModeActive()
+                bar = getNearestBarElement(event.target)
+                if !bar? or bar.classList.contains("is-hidden")
+                    clearLinkHover()
+                    clearHover()
+                    return
+
+                setLinkHover(bar)
+                return
+
+            clearLinkHover()
+
             if isBarInteractionLocked()
                 clearHover()
                 return
@@ -3022,6 +3274,21 @@ GanttBarResizeDirective = ($document) ->
         onMouseDown = (event) ->
             return if event.button? and event.button != 0
             return if active?
+
+            if isBarLinkModeActive()
+                bar = getNearestBarElement(event.target)
+                return if !bar? or bar.classList.contains("is-hidden")
+
+                rowId = bar.getAttribute("data-gantt-row-id")
+                return if !rowId?
+
+                event.preventDefault()
+                event.stopPropagation()
+
+                if $scope.ctrl?.registerGanttBarLinkClick?(rowId)
+                    $scope.$evalAsync()
+                return
+
             return if isBarInteractionLocked()
 
             bar = getNearestBarElement(event.target)
@@ -3044,11 +3311,17 @@ GanttBarResizeDirective = ($document) ->
         onMouseLeave = ->
             return if active?
             clearHover()
+            clearLinkHover()
 
         unwatchBarLock = $scope.$watch("ctrl.barsLocked", (locked) ->
             return if !locked
             stopDrag()
             clearHover()
+        )
+
+        unwatchBarLinkMode = $scope.$watch("ctrl.barLinkModeActive", (activeLinkMode) ->
+            return if activeLinkMode
+            clearLinkHover()
         )
 
         rightPanel.addEventListener("mousemove", onHoverMouseMove)
@@ -3060,12 +3333,14 @@ GanttBarResizeDirective = ($document) ->
             rightPanel.removeEventListener("mousedown", onMouseDown)
             rightPanel.removeEventListener("mouseleave", onMouseLeave)
             clearHover()
+            clearLinkHover()
             edgeIndicator.remove()
             limitIndicator.remove()
             moveEndLimitIndicator.remove()
             resizePopup.remove()
             stopDrag()
             unwatchBarLock?()
+            unwatchBarLinkMode?()
 
     return {link: link}
 

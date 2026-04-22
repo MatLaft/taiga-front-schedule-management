@@ -932,6 +932,7 @@
         },
         "GANTT": {
             "ZOOM_OPTIONS": "Opções de zoom",
+            "LINK_MODE": "Ligar atividades",
             "ZOOM": {
                 "DAILY": "Diário",
                 "WEEKLY": "Semanal",

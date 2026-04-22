@@ -77,8 +77,13 @@
         display: flex;
     }
 
+    .gantt-toolbar-link {
+        display: flex;
+    }
+
     .gantt-toolbar-history-button,
     .gantt-toolbar-color-picker-button,
+    .gantt-toolbar-link-button,
     .gantt-toolbar-zoom-button,
     .gantt-toolbar-lock-button {
         align-items: center;
@@ -133,7 +138,14 @@
         color: $color-link-primary;
     }
 
+    .gantt-toolbar-link-button.is-active {
+        background: rgba($color-link-primary, .12);
+        color: $color-link-primary;
+    }
+
     .gantt-toolbar-color-picker-button:focus,
+    .gantt-toolbar-link-button:focus,
+    .gantt-toolbar-link-button:focus-visible,
     .gantt-toolbar-color-picker-button:focus-visible {
         border-color: transparent;
         box-shadow: none;
@@ -734,6 +746,35 @@
         width: 100%;
     }
 
+    .gantt-link-layer {
+        pointer-events: none;
+    }
+
+    .gantt-link-path {
+        fill: none;
+        opacity: 1;
+        stroke: $color-link-primary;
+        stroke-linecap: round;
+        stroke-linejoin: miter;
+        stroke-width: 2;
+        vector-effect: non-scaling-stroke;
+    }
+
+    .gantt-link-arrowhead {
+        fill: none;
+        opacity: 1;
+        stroke: $color-link-primary;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2;
+        vector-effect: non-scaling-stroke;
+    }
+
+    .gantt-link-path.is-hidden,
+    .gantt-link-arrowhead.is-hidden {
+        display: none;
+    }
+
     .gantt-bar {
         opacity: .95;
         pointer-events: auto;
@@ -775,6 +816,20 @@
 
     .gantt-bar.is-dragging.is-move-bar {
         cursor: grabbing;
+    }
+
+    .gantt-bar.is-link-source {
+        opacity: 1;
+        stroke: rgba($color-link-primary, .95);
+        stroke-width: 2;
+        vector-effect: non-scaling-stroke;
+    }
+
+    .gantt-bar.is-link-target {
+        opacity: 1;
+        stroke: rgba($color-link-primary, .55);
+        stroke-width: 2;
+        vector-effect: non-scaling-stroke;
     }
 
     .gantt-bar-create-preview {
@@ -870,6 +925,12 @@
     .is-creating-gantt-bar * {
         cursor: crosshair;
         user-select: none;
+    }
+
+    .is-linking-gantt-bars {
+        .gantt-bar {
+            cursor: crosshair;
+        }
     }
 
 }
