@@ -118,6 +118,7 @@ urls = {
 
     # Tasks
     "tasks": "/tasks"
+    "schedule-dependencies": "/schedule-dependencies"
     "bulk-create-tasks": "/tasks/bulk_create"
     "bulk-update-task-taskboard-order": "/tasks/bulk_update_taskboard_order"
     "bulk-update-task-milestone": "/tasks/bulk_update_milestone"

@@ -44,6 +44,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @sourceEpics = []
         @sourceUserstories = []
         @sourceTasks = []
+        @sourceScheduleDependencies = []
         @colorList = getDefaulColorList()
         @activeColorMenuRowId = null
         @nodeCustomColorByRowId = {}
@@ -55,7 +56,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @barLinkModeActive = false
         @pendingBarLinkSourceRowId = null
         @barLinks = []
-        @nextBarLinkId = 1
+        @scheduleIdByRowId = {}
+        @rowIdByScheduleId = {}
+        @savingBarLinks = false
         @barChangeUndoStack = []
         @barChangeRedoStack = []
         @barChangeHistoryLimit = 100
@@ -99,11 +102,17 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             @repo.queryMany("epics", {project: @scope.projectId, include_schedule: true})
             @repo.queryMany("userstories", {project: @scope.projectId, include_schedule: true})
             @repo.queryMany("tasks", {project: @scope.projectId, include_schedule: true})
+            @repo.queryMany("schedule-dependencies", {project: @scope.projectId})
         ]
 
         return @q.all(promises).then (result) =>
-            [epics, userstories, tasks] = result
-            @buildGanttData(epics or [], userstories or [], tasks or [])
+            [epics, userstories, tasks, scheduleDependencies] = result
+            @buildGanttData(
+                epics or [],
+                userstories or [],
+                tasks or [],
+                scheduleDependencies or []
+            )
             @loading = false
         , (xhr) =>
             @loading = false
@@ -114,10 +123,11 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
             return @q.reject(xhr)
 
-    buildGanttData: (epics, userstories, tasks) ->
+    buildGanttData: (epics, userstories, tasks, scheduleDependencies = @sourceScheduleDependencies) ->
         @sourceEpics = epics or []
         @sourceUserstories = userstories or []
         @sourceTasks = tasks or []
+        @sourceScheduleDependencies = scheduleDependencies or []
 
         @timelineStartAnchor = null
         @tree = @_buildTree(@sourceEpics, @sourceUserstories, @sourceTasks)
@@ -133,9 +143,82 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         _.each(flatRows, (row) =>
             @rowNodesById[row.rowId] = row
         )
+        @_rebuildScheduleRowMaps(flatRows)
         @timeline = @_buildTimeline(flatRows)
         @ganttBars = @_buildBars(flatRows, @timeline)
+        @_syncBarLinksFromDependencies()
         @_pruneBarLinks()
+
+    _rowIdFromScheduleEntity: (entityType, entityId) ->
+        normalizedType = "#{entityType or ''}".toLowerCase()
+        normalizedEntityId = @_normalizeId(entityId)
+        return null if !normalizedEntityId?
+
+        rowPrefix = null
+        rowPrefix = "epic" if normalizedType == "epic"
+        rowPrefix = "story" if normalizedType == "userstory"
+        rowPrefix = "task" if normalizedType == "task"
+        return null if !rowPrefix?
+
+        return "#{rowPrefix}-#{normalizedEntityId}"
+
+    _rebuildScheduleRowMaps: (rows = []) ->
+        @scheduleIdByRowId = {}
+        @rowIdByScheduleId = {}
+
+        _.each(rows or [], (row) =>
+            return if !row?.rowId?
+
+            scheduleId = @_normalizeId(row.item?.schedule_id)
+            return if !scheduleId?
+
+            @scheduleIdByRowId[row.rowId] = scheduleId
+            @rowIdByScheduleId["#{scheduleId}"] = row.rowId
+        )
+
+    _syncBarLinksFromDependencies: ->
+        links = []
+        seenPairs = {}
+
+        _.each(@sourceScheduleDependencies or [], (dependency) =>
+            sourceRowId = null
+            targetRowId = null
+
+            sourceScheduleId = @_normalizeId(dependency?.from_schedule)
+            targetScheduleId = @_normalizeId(dependency?.to_schedule)
+
+            if sourceScheduleId? and targetScheduleId?
+                sourceRowId = @rowIdByScheduleId["#{sourceScheduleId}"]
+                targetRowId = @rowIdByScheduleId["#{targetScheduleId}"]
+
+            if !sourceRowId?
+                sourceRowId = @_rowIdFromScheduleEntity(
+                    dependency?.from_entity_type
+                    dependency?.from_entity_id
+                )
+
+            if !targetRowId?
+                targetRowId = @_rowIdFromScheduleEntity(
+                    dependency?.to_entity_type
+                    dependency?.to_entity_id
+                )
+
+            return if !sourceRowId? or !targetRowId? or sourceRowId == targetRowId
+            return if !@rowNodesById[sourceRowId] or !@rowNodesById[targetRowId]
+
+            pairKey = "#{sourceRowId}|#{targetRowId}"
+            return if seenPairs[pairKey]
+            seenPairs[pairKey] = true
+
+            links.push({
+                id: "#{dependency.id}"
+                sourceRowId: sourceRowId
+                targetRowId: targetRowId
+                dependencyId: dependency.id
+            })
+        )
+
+        @barLinks = links
 
     _normalizeDateForInput: (dateValue) ->
         return null if !dateValue
@@ -320,6 +403,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @canToggleBarsLock()
 
     canUseBarLinkMode: ->
+        return false if @savingBarLinks
+        return false if !@canToggleBarsLock()
         return (@ganttBars or []).length > 1
 
     _deactivateColorPickerMode: ->
@@ -363,24 +448,55 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     isPendingBarLinkSource: (rowId) ->
         return @barLinkModeActive and @pendingBarLinkSourceRowId == rowId
 
+    _hasBarLink: (sourceRowId, targetRowId) ->
+        return _.some(@barLinks or [], (link) ->
+            return link?.sourceRowId == sourceRowId and link?.targetRowId == targetRowId
+        )
+
+    _createBarLinkDependency: (sourceRowId, targetRowId) ->
+        sourceScheduleId = @_normalizeId(@scheduleIdByRowId[sourceRowId])
+        targetScheduleId = @_normalizeId(@scheduleIdByRowId[targetRowId])
+
+        if !sourceScheduleId? or !targetScheduleId?
+            @confirm.notify("error")
+            return @q.reject()
+
+        return @q.when() if @_hasBarLink(sourceRowId, targetRowId)
+
+        @savingBarLinks = true
+
+        return @repo.create("schedule-dependencies", {
+            from_schedule: sourceScheduleId
+            to_schedule: targetScheduleId
+        }).then (dependency) =>
+            @sourceScheduleDependencies.push(dependency)
+            @_syncBarLinksFromDependencies()
+            @scope.$evalAsync()
+            @confirm.notify("success")
+            return dependency
+        , (errorData) =>
+            message = @_extractApiErrorMessage(errorData)
+            @confirm.notify("error", message)
+            return @q.reject(errorData)
+        .finally =>
+            @savingBarLinks = false
+
     registerGanttBarLinkClick: (rowId) ->
         return false if !@barLinkModeActive
         return false if !rowId?
         return false if !@rowNodesById[rowId]?
+        return false if @savingBarLinks
 
         if !@pendingBarLinkSourceRowId?
             @pendingBarLinkSourceRowId = rowId
             return true
 
-        return true if @pendingBarLinkSourceRowId == rowId
-
-        @barLinks.push({
-            id: "gantt-link-#{@nextBarLinkId}"
-            sourceRowId: @pendingBarLinkSourceRowId
-            targetRowId: rowId
-        })
-        @nextBarLinkId += 1
+        sourceRowId = @pendingBarLinkSourceRowId
         @pendingBarLinkSourceRowId = null
+
+        return true if sourceRowId == rowId
+
+        @_createBarLinkDependency(sourceRowId, rowId)
         return true
 
     toggleBarsLock: (event) ->
@@ -1608,7 +1724,53 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         collect(row)
         return descendants
 
-    _buildResizeLimitData: (targetMoment, edge, timeline) ->
+    _getDependencySourceRows: (row) ->
+        rowId = row?.rowId
+        return [] if !rowId?
+
+        sources = []
+        seenRowIds = {}
+
+        _.each(@sourceScheduleDependencies or [], (dependency) =>
+            dependencyTargetRowId = null
+            dependencyTargetScheduleId = @_normalizeId(dependency?.to_schedule)
+
+            if dependencyTargetScheduleId?
+                dependencyTargetRowId = @rowIdByScheduleId["#{dependencyTargetScheduleId}"]
+
+            if !dependencyTargetRowId?
+                dependencyTargetRowId = @_rowIdFromScheduleEntity(
+                    dependency?.to_entity_type
+                    dependency?.to_entity_id
+                )
+
+            return if dependencyTargetRowId != rowId
+
+            sourceRowId = null
+            sourceScheduleId = @_normalizeId(dependency?.from_schedule)
+
+            if sourceScheduleId?
+                sourceRowId = @rowIdByScheduleId["#{sourceScheduleId}"]
+
+            if !sourceRowId?
+                sourceRowId = @_rowIdFromScheduleEntity(
+                    dependency?.from_entity_type
+                    dependency?.from_entity_id
+                )
+
+            return if !sourceRowId? or sourceRowId == rowId
+            return if seenRowIds[sourceRowId]
+
+            sourceRow = @rowNodesById[sourceRowId]
+            return if !sourceRow?
+
+            seenRowIds[sourceRowId] = true
+            sources.push(sourceRow)
+        )
+
+        return sources
+
+    _buildResizeLimitData: (targetMoment, edge, timeline, relatedRowIds = []) ->
         return null if !targetMoment? or !timeline?
 
         slotIndex = @_findTimelineSlotIndexForMoment(targetMoment, timeline)
@@ -1618,15 +1780,18 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return {
             slotIndex: slotIndex
             position: position
+            relatedRowIds: relatedRowIds
         }
 
     _buildResizeLimits: (row, timeline) ->
         descendants = @_getDescendantRows(row)
-        return null if !descendants.length
+        dependencySources = @_getDependencySourceRows(row)
 
         descendantRowIds = []
+        dependencySourceRowIds = []
         earliestStartMoment = null
         latestDueMoment = null
+        dependencyStartMinMoment = null
 
         _.each(descendants, (child) ->
             descendantRowIds.push(child.rowId) if child.rowId?
@@ -1640,15 +1805,32 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                     latestDueMoment = child.dueMoment.clone()
         )
 
-        startLimit = @_buildResizeLimitData(earliestStartMoment, "start", timeline)
-        endLimit = @_buildResizeLimitData(latestDueMoment, "end", timeline)
+        _.each(dependencySources, (sourceRow) ->
+            dependencySourceRowIds.push(sourceRow.rowId) if sourceRow.rowId?
+            return if !sourceRow.dueMoment?
 
-        return null if !startLimit? and !endLimit?
+            dependencyStartCandidate = sourceRow.dueMoment.clone().add(1, "day")
+            if !dependencyStartMinMoment? or dependencyStartCandidate.isAfter(dependencyStartMinMoment, "day")
+                dependencyStartMinMoment = dependencyStartCandidate
+        )
+
+        startLimit = @_buildResizeLimitData(earliestStartMoment, "start", timeline, descendantRowIds)
+        endLimit = @_buildResizeLimitData(latestDueMoment, "end", timeline, descendantRowIds)
+        dependencyStartLimit = @_buildResizeLimitData(
+            dependencyStartMinMoment
+            "start"
+            timeline
+            dependencySourceRowIds
+        )
+
+        return null if !startLimit? and !endLimit? and !dependencyStartLimit?
 
         return {
             descendantRowIds: descendantRowIds
+            dependencySourceRowIds: dependencySourceRowIds
             start: startLimit
             end: endLimit
+            dependencyStart: dependencyStartLimit
         }
 
     _getBarDetailUnits: (timeline, baseUnits) ->
@@ -2716,9 +2898,10 @@ GanttBarResizeDirective = ($document) ->
             return null if !edgeLimit?.position?
 
             return {
+                key: edge
                 position: edgeLimit.position
                 slotIndex: edgeLimit.slotIndex
-                descendantRowIds: limits.descendantRowIds or []
+                relatedRowIds: edgeLimit.relatedRowIds or limits.descendantRowIds or []
             }
 
         getResizeLimitForRow = (rowId, edge) ->
@@ -2727,6 +2910,30 @@ GanttBarResizeDirective = ($document) ->
         getResizeLimit = (bar, edge) ->
             rowId = bar?.getAttribute("data-gantt-row-id")
             return getResizeLimitForRow(rowId, edge)
+
+        getMoveLeftLimit = (bar, baseStartDay = null, baseEndDay = null) ->
+            endLimit = getResizeLimit(bar, "end")
+            dependencyStartLimit = getResizeLimit(bar, "dependencyStart")
+
+            return null if !endLimit? and !dependencyStartLimit?
+            return dependencyStartLimit if !endLimit?
+            return endLimit if !dependencyStartLimit?
+
+            startDay = parseInt(baseStartDay, 10)
+            if isNaN(startDay)
+                startDay = parseInt(bar?.getAttribute("data-start-day") or "1", 10)
+            startDay = Math.max(1, startDay)
+
+            endDay = parseInt(baseEndDay, 10)
+            if isNaN(endDay)
+                endDay = parseInt(bar?.getAttribute("data-end-day") or "#{startDay}", 10)
+            endDay = Math.max(startDay, endDay)
+
+            endLimitDelta = endLimit.slotIndex - endDay
+            dependencyStartDelta = dependencyStartLimit.slotIndex - startDay
+
+            return dependencyStartLimit if dependencyStartDelta >= endLimitDelta
+            return endLimit
 
         getBarFillColor = (bar) ->
             return "" if !bar?
@@ -2800,8 +3007,8 @@ GanttBarResizeDirective = ($document) ->
             resizePopup.style.left = "#{Math.round(left)}px"
             resizePopup.style.top = "#{Math.round(top)}px"
 
-        positionLimitIndicator = (bar, edge, indicator = limitIndicator) ->
-            limit = getResizeLimit(bar, edge)
+        positionLimitIndicator = (bar, edgeOrLimit, indicator = limitIndicator) ->
+            limit = if _.isString(edgeOrLimit) then getResizeLimit(bar, edgeOrLimit) else edgeOrLimit
             return hideLimitIndicator(indicator) if !limit?
 
             svg = getSvgForBar(bar)
@@ -2822,13 +3029,15 @@ GanttBarResizeDirective = ($document) ->
             top = barRect.top - panelRect.top + rightPanel.scrollTop
             bottom = barRect.bottom - panelRect.top + rightPanel.scrollTop
 
-            _.each(limit.descendantRowIds, (descendantRowId) ->
-                descendantBar = findBarByRowId(descendantRowId)
-                return if !descendantBar? or descendantBar.classList.contains("is-hidden")
+            _.each(limit.relatedRowIds or [], (relatedRowId) ->
+                relatedBar = findBarByRowId(relatedRowId)
+                return if !relatedBar? or relatedBar.classList.contains("is-hidden")
 
-                descendantRect = descendantBar.getBoundingClientRect()
-                descendantBottom = descendantRect.bottom - panelRect.top + rightPanel.scrollTop
-                bottom = Math.max(bottom, descendantBottom)
+                relatedRect = relatedBar.getBoundingClientRect()
+                relatedTop = relatedRect.top - panelRect.top + rightPanel.scrollTop
+                relatedBottom = relatedRect.bottom - panelRect.top + rightPanel.scrollTop
+                top = Math.min(top, relatedTop)
+                bottom = Math.max(bottom, relatedBottom)
             )
 
             indicator.style.left = "#{Math.round(x)}px"
@@ -2837,9 +3046,14 @@ GanttBarResizeDirective = ($document) ->
             indicator.style.backgroundColor = getBarFillColor(bar)
             indicator.classList.add("is-visible")
 
-        positionMoveLimitIndicators = (bar) ->
+        positionStartLimitIndicators = (bar) ->
             positionLimitIndicator(bar, "start", limitIndicator)
-            positionLimitIndicator(bar, "end", moveEndLimitIndicator)
+            positionLimitIndicator(bar, "dependencyStart", moveEndLimitIndicator)
+
+        positionMoveLimitIndicators = (bar, moveState = null) ->
+            positionLimitIndicator(bar, "start", limitIndicator)
+            leftLimit = getMoveLeftLimit(bar, moveState?.initialStartDay, moveState?.initialEndDay)
+            positionLimitIndicator(bar, leftLimit, moveEndLimitIndicator)
 
         clearHover = ->
             if hoveredBar?
@@ -2937,7 +3151,10 @@ GanttBarResizeDirective = ($document) ->
             hoveredBar.classList.add(if edge == "start" then "is-resize-start" else "is-resize-end")
             rightPanel.classList.add(HOVER_CLASS)
             positionEdgeIndicator(bar, edge)
-            positionLimitIndicator(bar, edge)
+            if edge == "start"
+                positionStartLimitIndicators(bar)
+            else
+                positionLimitIndicator(bar, edge)
 
         stopDrag = ->
             return if !active?
@@ -3027,13 +3244,15 @@ GanttBarResizeDirective = ($document) ->
                     active.rowIndex,
                     active.totalDays
                 )
-                positionMoveLimitIndicators(active.bar)
+                positionMoveLimitIndicators(active.bar, active)
                 positionResizePopup(active.bar, active.startDay, active.endDay, "end")
                 return
 
             deltaDays = (event.clientX - active.startX) / active.dayWidthPx
             nextVisualStartDay = active.initialStartDay
             nextVisualEndDay = active.initialEndDay
+            startMinDay = 1
+            startMaxDay = active.initialEndDay
 
             minMoveDelta = null
             maxMoveDelta = null
@@ -3048,6 +3267,9 @@ GanttBarResizeDirective = ($document) ->
                 if active.endLimit?.slotIndex?
                     minDelta = Math.max(minDelta, active.endLimit.slotIndex - active.initialEndDay)
 
+                if active.startMinLimit?.slotIndex?
+                    minDelta = Math.max(minDelta, active.startMinLimit.slotIndex - active.initialStartDay)
+
                 if minDelta > maxDelta
                     minDelta = 0
                     maxDelta = 0
@@ -3058,7 +3280,16 @@ GanttBarResizeDirective = ($document) ->
                 minMoveDelta = minDelta
                 maxMoveDelta = maxDelta
             else if active.edge == "start"
-                nextVisualStartDay = Math.max(1, Math.min(active.initialEndDay, active.initialStartDay + deltaDays))
+                if active.limit?.slotIndex?
+                    startMaxDay = Math.min(startMaxDay, active.limit.slotIndex)
+                if active.startMinLimit?.slotIndex?
+                    startMinDay = Math.max(startMinDay, active.startMinLimit.slotIndex)
+
+                if startMinDay > startMaxDay
+                    startMinDay = startMaxDay
+
+                nextVisualStartDay = active.initialStartDay + deltaDays
+                nextVisualStartDay = Math.max(startMinDay, Math.min(startMaxDay, nextVisualStartDay))
                 if active.limit?.slotIndex?
                     nextVisualStartDay = Math.min(nextVisualStartDay, active.limit.slotIndex)
             else
@@ -3082,8 +3313,13 @@ GanttBarResizeDirective = ($document) ->
                     nextStartDay = Math.min(nextStartDay, active.startLimit.slotIndex)
                 if active.endLimit?.slotIndex?
                     nextEndDay = Math.max(nextEndDay, active.endLimit.slotIndex)
-            else if active.edge == "start" and active.limit?.slotIndex?
-                nextStartDay = Math.min(nextStartDay, active.limit.slotIndex)
+                if active.startMinLimit?.slotIndex?
+                    nextStartDay = Math.max(nextStartDay, active.startMinLimit.slotIndex)
+            else if active.edge == "start"
+                if active.limit?.slotIndex?
+                    nextStartDay = Math.min(nextStartDay, active.limit.slotIndex)
+                if active.startMinLimit?.slotIndex?
+                    nextStartDay = Math.max(nextStartDay, active.startMinLimit.slotIndex)
             else if active.edge == "end" and active.limit?.slotIndex?
                 nextEndDay = Math.max(nextEndDay, active.limit.slotIndex)
 
@@ -3104,7 +3340,9 @@ GanttBarResizeDirective = ($document) ->
                 active.totalDays
             )
             if active.edge == "move"
-                positionMoveLimitIndicators(active.bar)
+                positionMoveLimitIndicators(active.bar, active)
+            else if active.edge == "start"
+                positionStartLimitIndicators(active.bar)
             else
                 positionLimitIndicator(active.bar, active.edge)
             positionResizePopup(active.bar, active.startDay, active.endDay, active.edge)
@@ -3140,6 +3378,7 @@ GanttBarResizeDirective = ($document) ->
             resizeLimit = if edge == "move" then null else getResizeLimit(bar, edge)
             startLimit = getResizeLimit(bar, "start")
             endLimit = getResizeLimit(bar, "end")
+            startMinLimit = getResizeLimit(bar, "dependencyStart")
 
             active = {
                 bar: bar
@@ -3158,6 +3397,7 @@ GanttBarResizeDirective = ($document) ->
                 limit: resizeLimit
                 startLimit: startLimit
                 endLimit: endLimit
+                startMinLimit: startMinLimit
             }
 
             clearHover()
@@ -3168,7 +3408,9 @@ GanttBarResizeDirective = ($document) ->
                 root.classList.add(DRAG_CLASS)
             bar.classList.add("is-dragging")
             if edge == "move"
-                positionMoveLimitIndicators(bar)
+                positionMoveLimitIndicators(bar, active)
+            else if edge == "start"
+                positionStartLimitIndicators(bar)
             else
                 positionLimitIndicator(bar, edge)
             positionResizePopup(bar, active.startDay, active.endDay, edge)
@@ -3200,8 +3442,10 @@ GanttBarResizeDirective = ($document) ->
 
             startLimit = getResizeLimitForRow(rowId, "start")
             endLimit = getResizeLimitForRow(rowId, "end")
+            startMinLimit = getResizeLimitForRow(rowId, "dependencyStart")
             startDay = getSlotIndexForEvent(event, svg, totalDays)
             startDay = Math.min(startDay, startLimit.slotIndex) if startLimit?.slotIndex?
+            startDay = Math.max(startDay, startMinLimit.slotIndex) if startMinLimit?.slotIndex?
             startDay = clamp(startDay, 1, totalDays)
 
             endDay = startDay
@@ -3231,9 +3475,10 @@ GanttBarResizeDirective = ($document) ->
                 visualEndDay: endDay
                 startLimit: startLimit
                 endLimit: endLimit
+                startMinLimit: startMinLimit
             }
 
-            positionMoveLimitIndicators(bar)
+            positionMoveLimitIndicators(bar, active)
             positionResizePopup(bar, active.startDay, active.endDay, "end")
             $document.on("mousemove", onDragMouseMove)
             $document.on("mouseup", stopDrag)
