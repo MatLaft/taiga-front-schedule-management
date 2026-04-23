@@ -2555,6 +2555,82 @@ GanttSyncRowsDirective = ->
                 ry: 0.16
             }
 
+        normalizeRowReferenceId = (value) ->
+            return null if !value?
+
+            if _.isObject(value)
+                return normalizeRowReferenceId(value.id) if value.id?
+                return null
+
+            numericValue = parseInt(value, 10)
+            return numericValue if !isNaN(numericValue)
+            return "#{value}"
+
+        getParentRowId = (rowId) ->
+            row = $scope.ctrl?.rowNodesById?[rowId]
+            return null if !row?
+
+            if row.type == "task"
+                storyId = normalizeRowReferenceId(row.item?.user_story) or normalizeRowReferenceId(row.item?.user_story_extra_info?.id)
+                return "story-#{storyId}" if storyId?
+                return null
+
+            if row.type == "story"
+                epicId = normalizeRowReferenceId(row.epicId)
+                return "epic-#{epicId}" if epicId?
+                return null
+
+            return null
+
+        isBarVisibleInTimeline = (bar) ->
+            return false if !bar?
+            return false if bar.classList.contains("is-hidden")
+            return false if bar.getAttribute("data-sync-hidden") == "true"
+            return false if bar.getAttribute("visibility") == "hidden"
+            return true
+
+        resolveVisibleSourceBar = (sourceRowId, barsByRowId) ->
+            currentRowId = sourceRowId
+            depth = 0
+
+            while currentRowId?
+                bar = barsByRowId[currentRowId]
+                if isBarVisibleInTimeline(bar)
+                    return {
+                        rowId: currentRowId
+                        bar: bar
+                        depth: depth
+                    }
+
+                currentRowId = getParentRowId(currentRowId)
+                depth += 1
+
+            return null
+
+        getSourceAnchorEndDay = (sourceRowId, fallbackBar, barsModelByRowId = {}) ->
+            barModel = barsModelByRowId[sourceRowId]
+            endDay = parseFloat(barModel?.endDay)
+            return endDay if isFinite(endDay) and endDay > 0
+
+            fallbackEndDay = parseFloat(fallbackBar?.getAttribute("data-end-day") or "0")
+            return fallbackEndDay if isFinite(fallbackEndDay) and fallbackEndDay > 0
+
+            return null
+
+        getBarBottomAnchorY = (bar, rowIndex) ->
+            shape = bar?.getAttribute("data-shape") or ""
+            barType = bar?.getAttribute("data-bar-type") or ""
+
+            return rowIndex + 0.78 if shape == "rounded"
+            return rowIndex + 0.74 if barType == "epic"
+            return rowIndex + 0.58
+
+        buildPromotedSourceStemPath = (sourceX, sourceY, depth) ->
+            stemDepth = Math.max(1, depth)
+            stemLength = 0.38 + ((stemDepth - 1) * 0.16)
+            stemStartY = sourceY + stemLength
+            return "M#{sourceX},#{stemStartY}L#{sourceX},#{sourceY}"
+
         buildDirectLinkRoute = (sourceX, sourceY, targetX, targetY, totalDays, turnGap) ->
             turnX = Math.min(totalDays, sourceX + turnGap)
             verticalDelta = targetY - sourceY
@@ -2624,7 +2700,7 @@ GanttSyncRowsDirective = ->
 
             return "M#{headBaseX},#{tipY - arrowHalfHeightY}L#{tipX},#{tipY}L#{headBaseX},#{tipY + arrowHalfHeightY}"
 
-        syncLinks = (barsSvg, barsByRowId, totalDays, visibleRowsCount) ->
+        syncLinks = (barsSvg, barsByRowId, barsModelByRowId, totalDays, visibleRowsCount) ->
             return if !barsSvg?
 
             linkPaths = Array.from(barsSvg.querySelectorAll(".gantt-link-path[data-link-id][data-source-row-id][data-target-row-id]"))
@@ -2670,15 +2746,15 @@ GanttSyncRowsDirective = ->
                 sourceCap = sourceCapsByLinkId[linkId]
                 sourceRowId = linkPath.getAttribute("data-source-row-id")
                 targetRowId = linkPath.getAttribute("data-target-row-id")
-                sourceBar = barsByRowId[sourceRowId]
+                sourceResolution = resolveVisibleSourceBar(sourceRowId, barsByRowId)
+                sourceBar = sourceResolution?.bar
                 targetBar = barsByRowId[targetRowId]
 
                 if !sourceBar? or !targetBar? or !arrowhead? or !sourceCap?
                     hideLink(linkPath, arrowhead, sourceCap)
                     return
 
-                sourceStartDay = parseFloat(sourceBar.getAttribute("data-start-day") or "1")
-                sourceEndDay = parseFloat(sourceBar.getAttribute("data-end-day") or "#{sourceStartDay}")
+                sourceEndDay = getSourceAnchorEndDay(sourceRowId, sourceBar, barsModelByRowId)
                 targetStartDay = parseFloat(targetBar.getAttribute("data-start-day") or "1")
                 sourceRowIndex = parseFloat(sourceBar.getAttribute("data-row-index") or "0")
                 targetRowIndex = parseFloat(targetBar.getAttribute("data-row-index") or "0")
@@ -2688,7 +2764,7 @@ GanttSyncRowsDirective = ->
                     return
 
                 sourceX = Math.min(totalDays, sourceEndDay + endpointGap)
-                sourceY = sourceRowIndex + 0.5
+                sourceY = if sourceResolution.depth > 0 then getBarBottomAnchorY(sourceBar, sourceRowIndex) else sourceRowIndex + 0.5
                 targetX = Math.max(0, targetStartDay - 1 - endpointGap)
                 targetY = targetRowIndex + 0.5
                 targetShape = targetBar.getAttribute("data-shape") or ""
@@ -2699,8 +2775,13 @@ GanttSyncRowsDirective = ->
                 targetBottomY = targetRowIndex + targetBottomOffset
                 linkRoute = buildLinkRoute(sourceX, sourceY, targetX, targetY, targetTopY, targetBottomY, totalDays, xScale, yScale)
                 sourceCapHalfHeightY = 4 / yScale
+                linkPathD = linkRoute.path
 
-                linkPath.setAttribute("d", linkRoute.path)
+                if sourceResolution.depth > 0
+                    promotedStemPath = buildPromotedSourceStemPath(sourceX, sourceY, sourceResolution.depth)
+                    linkPathD = "#{promotedStemPath} #{linkRoute.path}"
+
+                linkPath.setAttribute("d", linkPathD)
                 arrowhead.setAttribute("d", buildArrowheadPath(linkRoute.tipX, linkRoute.tipY, linkRoute.direction, xScale, yScale))
                 sourceCap.setAttribute("d", "M#{sourceX},#{sourceY - sourceCapHalfHeightY}L#{sourceX},#{sourceY + sourceCapHalfHeightY}")
                 linkPath.classList.remove("is-hidden")
@@ -2769,7 +2850,7 @@ GanttSyncRowsDirective = ->
                 bar.setAttribute("visibility", "visible")
                 barsByRowId[rowId] = bar
 
-            syncLinks(barsSvg, barsByRowId, totalDays, visibleRowsCount)
+            syncLinks(barsSvg, barsByRowId, barsModelByRowId, totalDays, visibleRowsCount)
 
         updateVisibleRows = ->
             rows = Array.from(leftPanel.querySelectorAll(".gantt-tree-row"))
@@ -3253,6 +3334,82 @@ GanttBarResizeDirective = ($document) ->
                 return candidate.getAttribute("data-gantt-row-id") == rowId
             )
 
+        normalizeRowReferenceId = (value) ->
+            return null if !value?
+
+            if _.isObject(value)
+                return normalizeRowReferenceId(value.id) if value.id?
+                return null
+
+            numericValue = parseInt(value, 10)
+            return numericValue if !isNaN(numericValue)
+            return "#{value}"
+
+        getParentRowId = (rowId) ->
+            row = getRowModel(rowId)
+            return null if !row?
+
+            if row.type == "task"
+                storyId = normalizeRowReferenceId(row.item?.user_story) or normalizeRowReferenceId(row.item?.user_story_extra_info?.id)
+                return "story-#{storyId}" if storyId?
+                return null
+
+            if row.type == "story"
+                epicId = normalizeRowReferenceId(row.epicId)
+                return "epic-#{epicId}" if epicId?
+                return null
+
+            return null
+
+        isBarVisibleInTimeline = (bar) ->
+            return false if !bar?
+            return false if bar.classList.contains("is-hidden")
+            return false if bar.getAttribute("data-sync-hidden") == "true"
+            return false if bar.getAttribute("visibility") == "hidden"
+            return true
+
+        resolveVisibleSourceBar = (sourceRowId, barsByRowId = null) ->
+            currentRowId = sourceRowId
+            depth = 0
+
+            while currentRowId?
+                bar = if barsByRowId? then barsByRowId[currentRowId] else findBarByRowId(currentRowId)
+                if isBarVisibleInTimeline(bar)
+                    return {
+                        rowId: currentRowId
+                        bar: bar
+                        depth: depth
+                    }
+
+                currentRowId = getParentRowId(currentRowId)
+                depth += 1
+
+            return null
+
+        getSourceAnchorEndDay = (sourceRowId, fallbackBar = null) ->
+            barModel = getBarModel(sourceRowId)
+            endDay = parseFloat(barModel?.endDay)
+            return endDay if isFinite(endDay) and endDay > 0
+
+            fallbackEndDay = parseFloat(fallbackBar?.getAttribute("data-end-day") or "0")
+            return fallbackEndDay if isFinite(fallbackEndDay) and fallbackEndDay > 0
+
+            return null
+
+        getBarBottomAnchorY = (bar, rowIndex) ->
+            shape = bar?.getAttribute("data-shape") or ""
+            barType = bar?.getAttribute("data-bar-type") or ""
+
+            return rowIndex + 0.78 if shape == "rounded"
+            return rowIndex + 0.74 if barType == "epic"
+            return rowIndex + 0.58
+
+        buildPromotedSourceStemPath = (sourceX, sourceY, depth) ->
+            stemDepth = Math.max(1, depth)
+            stemLength = 0.38 + ((stemDepth - 1) * 0.16)
+            stemStartY = sourceY + stemLength
+            return "M#{sourceX},#{stemStartY}L#{sourceX},#{sourceY}"
+
         setVisibleLinkSourceCapsForRow = (rowId = null, force = false) ->
             targetRowId = if rowId? then "#{rowId}" else null
             sourceCaps = Array.from(root.querySelectorAll(".gantt-link-source-cap[data-source-row-id]"))
@@ -3294,15 +3451,16 @@ GanttBarResizeDirective = ($document) ->
             _.each(incomingSourceRowIds, (isIncoming, sourceRowId) ->
                 return if !isIncoming
 
-                sourceBar = findBarByRowId(sourceRowId)
-                return if !sourceBar? or sourceBar.classList.contains("is-hidden")
+                sourceResolution = resolveVisibleSourceBar(sourceRowId)
+                sourceBar = sourceResolution?.bar
+                return if !sourceBar?
 
-                sourceEndDay = parseFloat(sourceBar.getAttribute("data-end-day") or "0")
+                sourceEndDay = getSourceAnchorEndDay(sourceRowId, sourceBar)
                 sourceRowIndex = parseFloat(sourceBar.getAttribute("data-row-index") or "0")
                 return if !isFinite(sourceEndDay) or !isFinite(sourceRowIndex)
 
                 sourceX = Math.min(totalDays, sourceEndDay + endpointGap)
-                sourceY = sourceRowIndex + 0.5
+                sourceY = if sourceResolution.depth > 0 then getBarBottomAnchorY(sourceBar, sourceRowIndex) else sourceRowIndex + 0.5
 
                 hoverSourceCap = document.createElementNS(SVG_NS, "path")
                 hoverSourceCap.setAttribute("class", "gantt-link-source-cap gantt-link-source-cap-hover is-visible")
