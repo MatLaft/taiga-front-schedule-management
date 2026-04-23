@@ -2622,7 +2622,8 @@ GanttSyncRowsDirective = ->
             barType = bar?.getAttribute("data-bar-type") or ""
 
             return rowIndex + 0.78 if shape == "rounded"
-            return rowIndex + 0.74 if barType == "epic"
+            return rowIndex + 0.64 if barType == "epic"
+            return rowIndex + 0.64 if barType == "story"
             return rowIndex + 0.58
 
         buildPromotedSourceStemPath = (sourceX, sourceY, depth) ->
@@ -2630,6 +2631,15 @@ GanttSyncRowsDirective = ->
             stemLength = 0.38 + ((stemDepth - 1) * 0.16)
             stemStartY = sourceY + stemLength
             return "M#{sourceX},#{stemStartY}L#{sourceX},#{sourceY}"
+
+        mergePromotedStemWithRoute = (promotedStemPath, routePath) ->
+            return promotedStemPath if !routePath?
+
+            firstLineCommandIndex = routePath.indexOf("L")
+            return promotedStemPath if firstLineCommandIndex < 0
+
+            routeContinuation = routePath.substring(firstLineCommandIndex)
+            return "#{promotedStemPath}#{routeContinuation}"
 
         buildDirectLinkRoute = (sourceX, sourceY, targetX, targetY, totalDays, turnGap) ->
             turnX = Math.min(totalDays, sourceX + turnGap)
@@ -2646,8 +2656,8 @@ GanttSyncRowsDirective = ->
                 path: "M#{sourceX},#{sourceY}L#{turnX},#{sourceY}L#{turnX},#{targetY}L#{targetX},#{targetY}"
             }
 
-        buildCloseLinkRoute = (sourceX, sourceY, targetX, targetTopY, targetBottomY, targetY, totalDays, xScale, yScale) ->
-            targetTipGap = 5 / yScale
+        buildCloseLinkRoute = (sourceX, sourceY, targetX, targetTopY, targetBottomY, targetY, totalDays, xScale, yScale, targetTipGapY = null) ->
+            targetTipGap = if isFinite(targetTipGapY) and targetTipGapY > 0 then targetTipGapY else (5 / yScale)
             targetTipY = if sourceY <= targetY
                 Math.max(0, targetTopY - targetTipGap)
             else
@@ -2672,17 +2682,55 @@ GanttSyncRowsDirective = ->
                 path: path
             }
 
-        buildLinkRoute = (sourceX, sourceY, targetX, targetY, targetTopY, targetBottomY, totalDays, xScale, yScale) ->
+        buildLinkRoute = (sourceX, sourceY, targetX, targetY, targetTopY, targetBottomY, totalDays, xScale, yScale, targetTipGapY = null) ->
             closeTurnGap = getBarDetailUnits(0.3)
             shouldUseCloseRoute = Math.abs(targetY - sourceY) > 0.001 and targetX - sourceX <= closeTurnGap
             if shouldUseCloseRoute
                 closeTargetX = Math.min(totalDays, sourceX + closeTurnGap)
-                return buildCloseLinkRoute(sourceX, sourceY, closeTargetX, targetTopY, targetBottomY, targetY, totalDays, xScale, yScale)
+                return buildCloseLinkRoute(sourceX, sourceY, closeTargetX, targetTopY, targetBottomY, targetY, totalDays, xScale, yScale, targetTipGapY)
 
             route = buildDirectLinkRoute(sourceX, sourceY, targetX, targetY, totalDays, closeTurnGap)
             route.tipX = targetX
             route.tipY = targetY
             return route
+
+        buildPromotedLinkRoute = (sourceX, sourceY, targetX, targetY, targetTopY, targetBottomY, totalDays, xScale, yScale, targetTipGapY = null) ->
+            closeTurnGap = getBarDetailUnits(0.3)
+            shouldUseCloseRoute = Math.abs(targetY - sourceY) > 0.001 and targetX - sourceX <= closeTurnGap
+
+            if shouldUseCloseRoute
+                targetTipGap = if isFinite(targetTipGapY) and targetTipGapY > 0 then targetTipGapY else (5 / yScale)
+                targetTipY = if sourceY <= targetY
+                    Math.max(0, targetTopY - targetTipGap)
+                else
+                    targetBottomY + targetTipGap
+
+                verticalDirection = if targetTipY >= sourceY then 1 else -1
+                return {
+                    direction: if verticalDirection > 0 then "down" else "up"
+                    tipX: sourceX
+                    tipY: targetTipY
+                    path: "M#{sourceX},#{sourceY}L#{sourceX},#{targetTipY}"
+                }
+
+            if Math.abs(targetY - sourceY) <= 0.001
+                return {
+                    direction: if targetX >= sourceX then 1 else -1
+                    tipX: targetX
+                    tipY: targetY
+                    path: "M#{sourceX},#{sourceY}L#{targetX},#{targetY}"
+                }
+
+            hasHorizontalTail = Math.abs(targetX - sourceX) > 0.001
+            path = "M#{sourceX},#{sourceY}L#{sourceX},#{targetY}"
+            path = "#{path}L#{targetX},#{targetY}" if hasHorizontalTail
+
+            return {
+                direction: if hasHorizontalTail then (if targetX >= sourceX then 1 else -1) else (if targetY >= sourceY then "down" else "up")
+                tipX: if hasHorizontalTail then targetX else sourceX
+                tipY: targetY
+                path: path
+            }
 
         buildArrowheadPath = (tipX, tipY, direction, xScale, yScale) ->
             arrowHeadBackX = 5 / xScale
@@ -2763,27 +2811,44 @@ GanttSyncRowsDirective = ->
                     hideLink(linkPath, arrowhead, sourceCap)
                     return
 
-                sourceX = Math.min(totalDays, sourceEndDay + endpointGap)
-                sourceY = if sourceResolution.depth > 0 then getBarBottomAnchorY(sourceBar, sourceRowIndex) else sourceRowIndex + 0.5
-                targetX = Math.max(0, targetStartDay - 1 - endpointGap)
-                targetY = targetRowIndex + 0.5
                 targetShape = targetBar.getAttribute("data-shape") or ""
                 targetBarType = targetBar.getAttribute("data-bar-type") or ""
+                targetEndpointGap = endpointGap
+                if targetBarType == "story"
+                    targetEndpointGap += getBarDetailUnits(0.06)
+                if targetShape == "rounded"
+                    targetEndpointGap += (2 / xScale)
+                targetTipGapY = (5 / yScale)
+                if targetShape == "rounded" or targetBarType == "story"
+                    targetTipGapY += (2 / yScale)
+
+                sourceX = Math.min(totalDays, sourceEndDay + endpointGap)
+                sourceY = if sourceResolution.depth > 0 then getBarBottomAnchorY(sourceBar, sourceRowIndex) else sourceRowIndex + 0.5
+                targetX = Math.max(0, targetStartDay - 1 - targetEndpointGap)
+                targetY = targetRowIndex + 0.5
                 targetTopOffset = if targetShape == "rounded" then 0.28 else 0.22
                 targetBottomOffset = if targetShape == "rounded" then 0.78 else if targetBarType == "epic" then 0.74 else 0.58
                 targetTopY = targetRowIndex + targetTopOffset
                 targetBottomY = targetRowIndex + targetBottomOffset
-                linkRoute = buildLinkRoute(sourceX, sourceY, targetX, targetY, targetTopY, targetBottomY, totalDays, xScale, yScale)
+                linkRoute = if sourceResolution.depth > 0
+                    buildPromotedLinkRoute(sourceX, sourceY, targetX, targetY, targetTopY, targetBottomY, totalDays, xScale, yScale, targetTipGapY)
+                else
+                    buildLinkRoute(sourceX, sourceY, targetX, targetY, targetTopY, targetBottomY, totalDays, xScale, yScale, targetTipGapY)
                 sourceCapHalfHeightY = 4 / yScale
+                sourceCapHalfWidthX = 4 / xScale
                 linkPathD = linkRoute.path
 
                 if sourceResolution.depth > 0
                     promotedStemPath = buildPromotedSourceStemPath(sourceX, sourceY, sourceResolution.depth)
-                    linkPathD = "#{promotedStemPath} #{linkRoute.path}"
+                    linkPathD = mergePromotedStemWithRoute(promotedStemPath, linkRoute.path)
 
                 linkPath.setAttribute("d", linkPathD)
                 arrowhead.setAttribute("d", buildArrowheadPath(linkRoute.tipX, linkRoute.tipY, linkRoute.direction, xScale, yScale))
-                sourceCap.setAttribute("d", "M#{sourceX},#{sourceY - sourceCapHalfHeightY}L#{sourceX},#{sourceY + sourceCapHalfHeightY}")
+                sourceCapPath = if sourceResolution.depth > 0
+                    "M#{sourceX - sourceCapHalfWidthX},#{sourceY}L#{sourceX + sourceCapHalfWidthX},#{sourceY}"
+                else
+                    "M#{sourceX},#{sourceY - sourceCapHalfHeightY}L#{sourceX},#{sourceY + sourceCapHalfHeightY}"
+                sourceCap.setAttribute("d", sourceCapPath)
                 linkPath.classList.remove("is-hidden")
                 arrowhead.classList.remove("is-hidden")
                 sourceCap.classList.remove("is-hidden")
@@ -3401,7 +3466,8 @@ GanttBarResizeDirective = ($document) ->
             barType = bar?.getAttribute("data-bar-type") or ""
 
             return rowIndex + 0.78 if shape == "rounded"
-            return rowIndex + 0.74 if barType == "epic"
+            return rowIndex + 0.64 if barType == "epic"
+            return rowIndex + 0.64 if barType == "story"
             return rowIndex + 0.58
 
         buildPromotedSourceStemPath = (sourceX, sourceY, depth) ->
@@ -3434,11 +3500,14 @@ GanttBarResizeDirective = ($document) ->
             totalDays = Math.max(1, totalDays)
             rowCount = getSvgRowCount(svg)
             svgRect = svg.getBoundingClientRect()
+            xScale = svgRect.width / totalDays
             yScale = svgRect.height / Math.max(1, rowCount)
+            return if !isFinite(xScale) or xScale <= 0
             return if !isFinite(yScale) or yScale <= 0
 
             endpointGap = getBarDetailUnits(0.08)
             sourceCapHalfHeightY = 4 / yScale
+            sourceCapHalfWidthX = 4 / xScale
             incomingSourceRowIds = {}
 
             _.each($scope.ctrl?.barLinks or [], (link) ->
@@ -3466,9 +3535,13 @@ GanttBarResizeDirective = ($document) ->
                 hoverSourceCap.setAttribute("class", "gantt-link-source-cap gantt-link-source-cap-hover is-visible")
                 hoverSourceCap.setAttribute("data-source-row-id", sourceRowId)
                 hoverSourceCap.setAttribute("data-target-row-id", targetRowId)
+                hoverSourceCapPath = if sourceResolution.depth > 0
+                    "M#{sourceX - sourceCapHalfWidthX},#{sourceY}L#{sourceX + sourceCapHalfWidthX},#{sourceY}"
+                else
+                    "M#{sourceX},#{sourceY - sourceCapHalfHeightY}L#{sourceX},#{sourceY + sourceCapHalfHeightY}"
                 hoverSourceCap.setAttribute(
                     "d",
-                    "M#{sourceX},#{sourceY - sourceCapHalfHeightY}L#{sourceX},#{sourceY + sourceCapHalfHeightY}"
+                    hoverSourceCapPath
                 )
                 sourceCapLayer.appendChild(hoverSourceCap)
                 hoverSourceCapPathsBySourceRowId["#{sourceRowId}"] = hoverSourceCap
