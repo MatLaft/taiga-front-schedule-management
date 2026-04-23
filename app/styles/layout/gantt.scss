@@ -909,6 +909,12 @@
         display: none;
     }
 
+    .gantt-link-path[data-sync-hidden='true'],
+    .gantt-link-arrowhead[data-sync-hidden='true'],
+    .gantt-link-source-cap[data-sync-hidden='true'] {
+        display: none;
+    }
+
     .gantt-bar {
         opacity: .95;
         outline: none;
@@ -919,6 +925,14 @@
         &:focus-visible {
             outline: none;
         }
+    }
+
+    .gantt-bar:not([data-row-index]):not(.gantt-bar-create-preview) {
+        display: none;
+    }
+
+    .gantt-bar[data-sync-hidden='true'] {
+        display: none;
     }
 
     .gantt-bar.is-hidden {

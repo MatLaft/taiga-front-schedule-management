@@ -165,6 +165,12 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @_syncBarLinksFromDependencies()
         @_pruneBarLinks()
 
+    _refreshTimelineLayoutForCurrentTree: ->
+        flatRows = @_flattenRows(@tree)
+        @timeline = @_buildTimeline(flatRows)
+        @ganttBars = @_buildBars(flatRows, @timeline)
+        @_pruneBarLinks()
+
     _rowIdFromScheduleEntity: (entityType, entityId) ->
         normalizedType = "#{entityType or ''}".toLowerCase()
         normalizedEntityId = @_normalizeId(entityId)
@@ -832,7 +838,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return if currentWidthValue? and Math.abs(nextWidthValue - currentWidthValue) < 0.0001
 
         @_setCurrentScaleWidthValue(scale, nextWidthValue)
-        @_refreshComputedData()
+        @_refreshTimelineLayoutForCurrentTree()
+        @scope.$broadcast("tg:gantt-sync-rows-now")
         @scope.$evalAsync()
 
     _getTimelineScale: ->
@@ -2640,9 +2647,15 @@ GanttSyncRowsDirective = ->
 
             hideLink = (linkPath, arrowhead, sourceCap) ->
                 linkPath.classList.add("is-hidden")
+                linkPath.setAttribute("data-sync-hidden", "true")
+                linkPath.setAttribute("visibility", "hidden")
                 arrowhead?.classList?.add("is-hidden")
+                arrowhead?.setAttribute("data-sync-hidden", "true")
+                arrowhead?.setAttribute("visibility", "hidden")
                 sourceCap?.classList?.remove("is-visible")
                 sourceCap?.classList?.add("is-hidden")
+                sourceCap?.setAttribute("data-sync-hidden", "true")
+                sourceCap?.setAttribute("visibility", "hidden")
 
             if !isFinite(xScale) or !isFinite(yScale) or xScale <= 0 or yScale <= 0
                 _.each(linkPaths, (linkPath) ->
@@ -2693,6 +2706,12 @@ GanttSyncRowsDirective = ->
                 linkPath.classList.remove("is-hidden")
                 arrowhead.classList.remove("is-hidden")
                 sourceCap.classList.remove("is-hidden")
+                linkPath.removeAttribute("data-sync-hidden")
+                arrowhead.removeAttribute("data-sync-hidden")
+                sourceCap.removeAttribute("data-sync-hidden")
+                linkPath.setAttribute("visibility", "visible")
+                arrowhead.setAttribute("visibility", "visible")
+                sourceCap.setAttribute("visibility", "visible")
 
         syncBars = (visibleRowMap, visibleRowsCount) ->
             barsData = getBarsData()
@@ -2713,6 +2732,8 @@ GanttSyncRowsDirective = ->
 
                 if rowIndex == undefined
                     bar.classList.add("is-hidden")
+                    bar.setAttribute("data-sync-hidden", "true")
+                    bar.setAttribute("visibility", "hidden")
                     bar.removeAttribute("data-row-index")
                     return
 
@@ -2744,6 +2765,8 @@ GanttSyncRowsDirective = ->
                     bar.setAttribute("d", path)
 
                 bar.classList.remove("is-hidden")
+                bar.removeAttribute("data-sync-hidden")
+                bar.setAttribute("visibility", "visible")
                 barsByRowId[rowId] = bar
 
             syncLinks(barsSvg, barsByRowId, totalDays, visibleRowsCount)
@@ -2769,7 +2792,7 @@ GanttSyncRowsDirective = ->
             updateVisibleRows()
 
         observer = null
-        scheduleUpdate = _.debounce(updateVisibleRows, 10)
+        scheduleUpdate = _.debounce(updateVisibleRows, 0)
         onWindowResize = _.debounce(updateVisibleRows, 25)
         unwatchBars = $scope.$watchCollection("ctrl.ganttBars", ->
             _.defer(scheduleUpdate)
@@ -2782,6 +2805,9 @@ GanttSyncRowsDirective = ->
         )
         unwatchTimelineDays = $scope.$watch("ctrl.timeline.totalDays", ->
             _.defer(scheduleUpdate)
+        )
+        unwatchForcedSyncRows = $scope.$on("tg:gantt-sync-rows-now", ->
+            updateVisibleRows()
         )
 
         isResizeOverlayMutation = (mutation) ->
@@ -2831,6 +2857,7 @@ GanttSyncRowsDirective = ->
             unwatchBarLinks?()
             unwatchTimelineStart?()
             unwatchTimelineDays?()
+            unwatchForcedSyncRows?()
 
     return {link: link}
 
