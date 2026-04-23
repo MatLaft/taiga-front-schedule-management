@@ -460,6 +460,31 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             return link?.sourceRowId == sourceRowId and link?.targetRowId == targetRowId
         )
 
+    _findBarLink: (sourceRowId, targetRowId) ->
+        return _.find(@barLinks or [], (link) ->
+            return link?.sourceRowId == sourceRowId and link?.targetRowId == targetRowId
+        )
+
+    _findScheduleDependencyForBarLink: (sourceRowId, targetRowId) ->
+        sourceScheduleId = @_normalizeId(@scheduleIdByRowId[sourceRowId])
+        targetScheduleId = @_normalizeId(@scheduleIdByRowId[targetRowId])
+        return null if !sourceScheduleId? or !targetScheduleId?
+
+        link = @_findBarLink(sourceRowId, targetRowId)
+        dependencyId = @_normalizeId(link?.dependencyId)
+
+        if dependencyId?
+            dependencyById = _.find(@sourceScheduleDependencies or [], (dependency) =>
+                return @_normalizeId(dependency?.id) == dependencyId
+            )
+            return dependencyById if dependencyById?
+
+        return _.find(@sourceScheduleDependencies or [], (dependency) =>
+            fromScheduleId = @_normalizeId(dependency?.from_schedule)
+            toScheduleId = @_normalizeId(dependency?.to_schedule)
+            return fromScheduleId == sourceScheduleId and toScheduleId == targetScheduleId
+        )
+
     _createBarLinkDependency: (sourceRowId, targetRowId) ->
         sourceScheduleId = @_normalizeId(@scheduleIdByRowId[sourceRowId])
         targetScheduleId = @_normalizeId(@scheduleIdByRowId[targetRowId])
@@ -488,6 +513,51 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         .finally =>
             @savingBarLinks = false
 
+    _removeBarLinkDependency: (sourceRowId, targetRowId) ->
+        dependency = @_findScheduleDependencyForBarLink(sourceRowId, targetRowId)
+
+        if !dependency?
+            @barLinks = _.filter(@barLinks or [], (link) ->
+                return !(link?.sourceRowId == sourceRowId and link?.targetRowId == targetRowId)
+            )
+            @scope.$evalAsync()
+            return @q.when()
+
+        @savingBarLinks = true
+        dependencyId = @_normalizeId(dependency.id)
+
+        return @repo.remove(dependency).then =>
+            @sourceScheduleDependencies = _.filter(@sourceScheduleDependencies or [], (candidate) =>
+                return @_normalizeId(candidate?.id) != dependencyId
+            )
+            @_syncBarLinksFromDependencies()
+            @scope.$evalAsync()
+            @confirm.notify("success")
+            return
+        , (errorData) =>
+            message = @_extractApiErrorMessage(errorData)
+            @confirm.notify("error", message)
+            return @q.reject(errorData)
+        .finally =>
+            @savingBarLinks = false
+
+    _toggleBarLinkDependency: (sourceRowId, targetRowId) ->
+        if @_hasBarLink(sourceRowId, targetRowId)
+            return @_removeBarLinkDependency(sourceRowId, targetRowId)
+
+        return @_createBarLinkDependency(sourceRowId, targetRowId)
+
+    toggleGanttBarLink: (sourceRowId, targetRowId) ->
+        return false if !@barLinkModeActive
+        return false if !sourceRowId? or !targetRowId?
+        return false if sourceRowId == targetRowId
+        return false if !@rowNodesById[sourceRowId]? or !@rowNodesById[targetRowId]?
+        return false if @savingBarLinks
+
+        @pendingBarLinkSourceRowId = null
+        @_toggleBarLinkDependency(sourceRowId, targetRowId)
+        return true
+
     registerGanttBarLinkClick: (rowId) ->
         return false if !@barLinkModeActive
         return false if !rowId?
@@ -503,7 +573,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return true if sourceRowId == rowId
 
-        @_createBarLinkDependency(sourceRowId, rowId)
+        @_toggleBarLinkDependency(sourceRowId, rowId)
         return true
 
     toggleBarsLock: (event) ->
@@ -2651,12 +2721,17 @@ GanttBarResizeDirective = ($document) ->
         MOVE_DRAG_CLASS = "is-moving-gantt-bar"
         CREATE_DRAG_CLASS = "is-creating-gantt-bar"
         HOVER_CLASS = "is-hovering-gantt-edge"
+        LINK_DRAG_CLASS = "is-dragging-gantt-link"
+        LINK_DRAG_MOVE_THRESHOLD_PX = 3
         SVG_NS = "http://www.w3.org/2000/svg"
         INDICATOR_FRAME_WIDTH = 10
         INDICATOR_ARROW_WIDTH = 6
         INDICATOR_WIDTH = INDICATOR_FRAME_WIDTH + INDICATOR_ARROW_WIDTH
         INDICATOR_GAP_PX = 1
         INDICATOR_PAD_Y_PX = 4
+        activeLinkDrag = null
+        linkDragPreviewPath = null
+        linkDragPreviewArrowhead = null
         hoveredBar = null
         hoveredEdge = null
         linkHoveredBar = null
@@ -2698,6 +2773,18 @@ GanttBarResizeDirective = ($document) ->
 
         getBarsSvg = ->
             return rightPanel.querySelector(".gantt-bars-svg")
+
+        getSvgRowCount = (svg) ->
+            viewBoxRaw = (svg?.getAttribute("viewBox") or "").trim()
+            viewBoxParts = if viewBoxRaw.length then viewBoxRaw.split(/\s+/) else []
+
+            if viewBoxParts.length >= 4
+                parsedRowCount = parseFloat(viewBoxParts[3])
+                return parsedRowCount if isFinite(parsedRowCount) and parsedRowCount > 0
+
+            fallbackRowCount = parseFloat($scope.ctrl?.timeline?.rowCount or "1")
+            fallbackRowCount = 1 if !isFinite(fallbackRowCount) or fallbackRowCount <= 0
+            return fallbackRowCount
 
         getTimelineGrid = ->
             return rightPanel.querySelector(".gantt-timeline-grid")
@@ -2829,6 +2916,31 @@ GanttBarResizeDirective = ($document) ->
             position = getEventTimelinePosition(event, svg, totalDays)
             slotIndex = Math.floor(position) + 1
             return clamp(slotIndex, 1, totalDays)
+
+        getEventTimelineYPosition = (event, svg, rowCount) ->
+            rect = svg?.getBoundingClientRect()
+            return 0 if !rect? or rect.height <= 0
+
+            relativeY = event.clientY - rect.top
+            position = (relativeY / rect.height) * rowCount
+            return clamp(position, 0, rowCount)
+
+        getBarLinkAnchorPoint = (bar, totalDays) ->
+            startDay = parseFloat(bar?.getAttribute("data-start-day") or "1")
+            endDay = parseFloat(bar?.getAttribute("data-end-day") or "#{startDay}")
+            rowIndex = parseFloat(bar?.getAttribute("data-row-index") or "0")
+
+            startDay = 1 if !isFinite(startDay) or startDay <= 0
+            endDay = startDay if !isFinite(endDay) or endDay < startDay
+            rowIndex = 0 if !isFinite(rowIndex)
+
+            left = Math.max(0, startDay - 1)
+            right = Math.min(totalDays, endDay)
+
+            return {
+                x: (left + right) / 2
+                y: rowIndex + 0.5
+            }
 
         isEventInsideTimelineGrid = (event) ->
             grid = getTimelineGrid()
@@ -3118,6 +3230,166 @@ GanttBarResizeDirective = ($document) ->
             tipX = INDICATOR_WIDTH - .5
             baseX = INDICATOR_WIDTH - 4.5
             "M#{tipX},#{mid}L#{baseX},#{mid - arrowHalfHeight}L#{baseX},#{mid + arrowHalfHeight}z"
+
+        buildLinkPreviewArrowheadPath = (tipX, tipY, direction, xScale, yScale) ->
+            arrowHeadBackX = 5 / xScale
+            arrowHalfHeightY = 5 / yScale
+            arrowHeadBackY = 5 / yScale
+            arrowHalfWidthX = 5 / xScale
+
+            if direction == "down" or direction == "up"
+                verticalDirection = if direction == "down" then 1 else -1
+                headBaseY = tipY - (verticalDirection * arrowHeadBackY)
+                return "M#{tipX - arrowHalfWidthX},#{headBaseY}L#{tipX},#{tipY}L#{tipX + arrowHalfWidthX},#{headBaseY}"
+
+            horizontalDirection = if direction == "left" or direction == -1 then -1 else 1
+            headBaseX = tipX - (horizontalDirection * arrowHeadBackX)
+            return "M#{headBaseX},#{tipY - arrowHalfHeightY}L#{tipX},#{tipY}L#{headBaseX},#{tipY + arrowHalfHeightY}"
+
+        ensureLinkDragPreviewElements = (svg) ->
+            return if !svg?
+
+            linkLayer = svg.querySelector(".gantt-link-layer") or svg
+            currentParentMatches = linkDragPreviewPath?.parentNode == linkLayer and linkDragPreviewArrowhead?.parentNode == linkLayer
+            return if currentParentMatches
+
+            linkDragPreviewPath?.remove()
+            linkDragPreviewArrowhead?.remove()
+
+            linkDragPreviewPath = document.createElementNS(SVG_NS, "path")
+            linkDragPreviewPath.setAttribute("class", "gantt-link-path gantt-link-preview is-hidden")
+
+            linkDragPreviewArrowhead = document.createElementNS(SVG_NS, "path")
+            linkDragPreviewArrowhead.setAttribute("class", "gantt-link-arrowhead gantt-link-preview is-hidden")
+
+            linkLayer.appendChild(linkDragPreviewPath)
+            linkLayer.appendChild(linkDragPreviewArrowhead)
+
+        hideLinkDragPreview = ->
+            linkDragPreviewPath?.classList?.add("is-hidden")
+            linkDragPreviewArrowhead?.classList?.add("is-hidden")
+
+        updateLinkDragPreview = (event) ->
+            return if !activeLinkDrag?
+
+            svg = activeLinkDrag.svg
+            return hideLinkDragPreview() if !svg?
+
+            totalDays = parseFloat(svg.getAttribute("data-total-days") or "0") or 0
+            totalDays = Math.max(1, totalDays)
+            rowCount = getSvgRowCount(svg)
+
+            svgRect = svg.getBoundingClientRect()
+            xScale = svgRect.width / totalDays
+            yScale = svgRect.height / Math.max(1, rowCount)
+            return hideLinkDragPreview() if svgRect.width <= 0 or svgRect.height <= 0
+            return hideLinkDragPreview() if !isFinite(xScale) or xScale <= 0 or !isFinite(yScale) or yScale <= 0
+
+            anchor = getBarLinkAnchorPoint(activeLinkDrag.sourceBar, totalDays)
+            targetX = getEventTimelinePosition(event, svg, totalDays)
+            targetY = getEventTimelineYPosition(event, svg, rowCount)
+            return hideLinkDragPreview() if !isFinite(anchor?.x) or !isFinite(anchor?.y) or !isFinite(targetX) or !isFinite(targetY)
+
+            deltaX = targetX - anchor.x
+            deltaY = targetY - anchor.y
+            direction = null
+
+            if Math.abs(deltaX) >= Math.abs(deltaY)
+                direction = if deltaX >= 0 then 1 else -1
+            else
+                direction = if deltaY >= 0 then "down" else "up"
+
+            linkDragPreviewPath.setAttribute("d", "M#{anchor.x},#{anchor.y}L#{targetX},#{targetY}")
+            linkDragPreviewArrowhead.setAttribute("d", buildLinkPreviewArrowheadPath(targetX, targetY, direction, xScale, yScale))
+            linkDragPreviewPath.classList.remove("is-hidden")
+            linkDragPreviewArrowhead.classList.remove("is-hidden")
+
+        onLinkDragMouseMove = (event) ->
+            return if !activeLinkDrag?
+
+            movedX = Math.abs(event.clientX - activeLinkDrag.startX)
+            movedY = Math.abs(event.clientY - activeLinkDrag.startY)
+            activeLinkDrag.moved = true if movedX > LINK_DRAG_MOVE_THRESHOLD_PX or movedY > LINK_DRAG_MOVE_THRESHOLD_PX
+
+            bar = getNearestBarElement(event.target)
+            isValidTarget = bar? and bar != activeLinkDrag.sourceBar and !bar.classList.contains("is-hidden")
+
+            if isValidTarget
+                setLinkHover(bar)
+            else
+                clearLinkHover()
+
+            updateLinkDragPreview(event)
+
+        stopLinkDrag = (event = null, options = {}) ->
+            return if !activeLinkDrag?
+
+            finishedLinkDrag = activeLinkDrag
+            activeLinkDrag = null
+            $document.off("mousemove", onLinkDragMouseMove)
+            $document.off("mouseup", stopLinkDrag)
+            root.classList.remove(LINK_DRAG_CLASS)
+            hideLinkDragPreview()
+
+            finishedLinkDrag.sourceBar?.classList?.remove("is-link-source")
+            clearLinkHover()
+            clearHover()
+
+            return if options.cancel == true
+
+            sourceRowId = finishedLinkDrag.sourceRowId
+            targetBar = if event? then getNearestBarElement(event.target) else null
+            targetRowId = targetBar?.getAttribute("data-gantt-row-id")
+            moved = finishedLinkDrag.moved
+
+            if !moved and event?
+                movedX = Math.abs(event.clientX - finishedLinkDrag.startX)
+                movedY = Math.abs(event.clientY - finishedLinkDrag.startY)
+                moved = movedX > LINK_DRAG_MOVE_THRESHOLD_PX or movedY > LINK_DRAG_MOVE_THRESHOLD_PX
+
+            handled = false
+            if targetRowId? and targetRowId != sourceRowId
+                handled = !!$scope.ctrl?.toggleGanttBarLink?(sourceRowId, targetRowId)
+            else if !moved
+                handled = !!$scope.ctrl?.registerGanttBarLinkClick?(sourceRowId)
+
+            $scope.$evalAsync() if handled
+
+        startLinkDrag = (bar, event) ->
+            return false if !bar?
+
+            sourceRowId = bar.getAttribute("data-gantt-row-id")
+            return false if !sourceRowId?
+
+            svg = getBarsSvg()
+            return false if !svg?
+
+            totalDays = parseFloat(svg.getAttribute("data-total-days") or "0") or 0
+            totalDays = Math.max(1, totalDays)
+            rowCount = getSvgRowCount(svg)
+            return false if rowCount <= 0
+
+            stopLinkDrag(null, {cancel: true}) if activeLinkDrag?
+            ensureLinkDragPreviewElements(svg)
+            hideLinkDragPreview()
+
+            activeLinkDrag = {
+                sourceBar: bar
+                sourceRowId: sourceRowId
+                svg: svg
+                totalDays: totalDays
+                rowCount: rowCount
+                startX: event.clientX
+                startY: event.clientY
+                moved: false
+            }
+
+            bar.classList.add("is-link-source")
+            root.classList.add(LINK_DRAG_CLASS)
+            updateLinkDragPreview(event)
+            $document.on("mousemove", onLinkDragMouseMove)
+            $document.on("mouseup", stopLinkDrag)
+            return true
 
         positionEdgeIndicator = (bar, edge) ->
             panelRect = rightPanel.getBoundingClientRect()
@@ -3497,7 +3769,7 @@ GanttBarResizeDirective = ($document) ->
             return true
 
         onHoverMouseMove = (event) ->
-            return if active?
+            return if active? or activeLinkDrag?
 
             if isBarLinkModeActive()
                 bar = getNearestBarElement(event.target)
@@ -3530,7 +3802,7 @@ GanttBarResizeDirective = ($document) ->
 
         onMouseDown = (event) ->
             return if event.button? and event.button != 0
-            return if active?
+            return if active? or activeLinkDrag?
 
             if isBarLinkModeActive()
                 bar = getNearestBarElement(event.target)
@@ -3542,7 +3814,8 @@ GanttBarResizeDirective = ($document) ->
                 event.preventDefault()
                 event.stopPropagation()
 
-                if $scope.ctrl?.registerGanttBarLinkClick?(rowId)
+                started = startLinkDrag(bar, event)
+                if !started and $scope.ctrl?.registerGanttBarLinkClick?(rowId)
                     $scope.$evalAsync()
                 return
 
@@ -3566,18 +3839,20 @@ GanttBarResizeDirective = ($document) ->
             startDrag(bar, edge, event)
 
         onMouseLeave = ->
-            return if active?
+            return if active? or activeLinkDrag?
             clearHover()
             clearLinkHover()
 
         unwatchBarLock = $scope.$watch("ctrl.barsLocked", (locked) ->
             return if !locked
             stopDrag()
+            stopLinkDrag(null, {cancel: true})
             clearHover()
         )
 
         unwatchBarLinkMode = $scope.$watch("ctrl.barLinkModeActive", (activeLinkMode) ->
             return if activeLinkMode
+            stopLinkDrag(null, {cancel: true})
             clearLinkHover()
         )
 
@@ -3596,6 +3871,9 @@ GanttBarResizeDirective = ($document) ->
             moveEndLimitIndicator.remove()
             resizePopup.remove()
             stopDrag()
+            stopLinkDrag(null, {cancel: true})
+            linkDragPreviewPath?.remove()
+            linkDragPreviewArrowhead?.remove()
             unwatchBarLock?()
             unwatchBarLinkMode?()
 

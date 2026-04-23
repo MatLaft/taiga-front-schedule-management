@@ -770,6 +770,12 @@
         vector-effect: non-scaling-stroke;
     }
 
+    .gantt-link-path.gantt-link-preview,
+    .gantt-link-arrowhead.gantt-link-preview {
+        opacity: .22;
+        pointer-events: none;
+    }
+
     .gantt-link-path.is-hidden,
     .gantt-link-arrowhead.is-hidden {
         display: none;
@@ -931,6 +937,12 @@
         .gantt-bar {
             cursor: crosshair;
         }
+    }
+
+    .is-dragging-gantt-link,
+    .is-dragging-gantt-link * {
+        cursor: crosshair;
+        user-select: none;
     }
 
 }
