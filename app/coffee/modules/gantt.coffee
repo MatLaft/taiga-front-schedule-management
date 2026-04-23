@@ -2643,10 +2643,9 @@ GanttSyncRowsDirective = ->
                 return if !rowId?
                 visibleRowMap[rowId] = index
 
-            syncBars(visibleRowMap, visibleRows.length)
-
             visibleRowsCount = Math.max(visibleRows.length, 1)
             root.style.setProperty("--gantt-visible-rows", "#{visibleRowsCount}")
+            syncBars(visibleRowMap, visibleRowsCount)
             updateRightPanelOverflow(visibleRows)
 
         onChange = (event) ->
