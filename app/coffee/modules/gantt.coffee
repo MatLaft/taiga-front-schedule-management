@@ -2886,6 +2886,9 @@ GanttBarResizeDirective = ($document) ->
         activeLinkDrag = null
         linkDragPreviewPath = null
         linkDragPreviewArrowhead = null
+        visibleLinkSourceCapsRowId = null
+        hoverSourceCapLayer = null
+        hoverSourceCapPathsBySourceRowId = {}
         hoveredBar = null
         hoveredEdge = null
         linkHoveredBar = null
@@ -2927,6 +2930,26 @@ GanttBarResizeDirective = ($document) ->
 
         getBarsSvg = ->
             return rightPanel.querySelector(".gantt-bars-svg")
+
+        ensureHoverSourceCapLayer = (svg = null) ->
+            targetSvg = svg or getBarsSvg()
+            return null if !targetSvg?
+
+            linkLayer = targetSvg.querySelector(".gantt-link-layer") or targetSvg
+            if !hoverSourceCapLayer? or hoverSourceCapLayer.parentNode != linkLayer
+                hoverSourceCapLayer?.remove()
+                hoverSourceCapLayer = document.createElementNS(SVG_NS, "g")
+                hoverSourceCapLayer.setAttribute("class", "gantt-link-hover-source-cap-layer")
+                linkLayer.appendChild(hoverSourceCapLayer)
+                hoverSourceCapPathsBySourceRowId = {}
+
+            return hoverSourceCapLayer
+
+        clearHoverSourceCaps = ->
+            _.each(hoverSourceCapPathsBySourceRowId, (sourceCapPath) ->
+                sourceCapPath?.remove()
+            )
+            hoverSourceCapPathsBySourceRowId = {}
 
         getSvgRowCount = (svg) ->
             viewBoxRaw = (svg?.getAttribute("viewBox") or "").trim()
@@ -3230,18 +3253,67 @@ GanttBarResizeDirective = ($document) ->
                 return candidate.getAttribute("data-gantt-row-id") == rowId
             )
 
-        setVisibleLinkSourceCapsForRow = (rowId = null) ->
+        setVisibleLinkSourceCapsForRow = (rowId = null, force = false) ->
+            targetRowId = if rowId? then "#{rowId}" else null
             sourceCaps = Array.from(root.querySelectorAll(".gantt-link-source-cap[data-source-row-id]"))
+
+            if !force and targetRowId? and visibleLinkSourceCapsRowId == targetRowId
+                return
+
+            visibleLinkSourceCapsRowId = targetRowId
             _.each(sourceCaps, (sourceCap) ->
                 sourceCap.classList.remove("is-visible")
             )
+            clearHoverSourceCaps()
+            return if !targetRowId?
 
-            return if !rowId?
+            svg = getBarsSvg()
+            return if !svg?
 
-            _.each(sourceCaps, (sourceCap) ->
-                return if sourceCap.classList.contains("is-hidden")
-                if sourceCap.getAttribute("data-target-row-id") == rowId
-                    sourceCap.classList.add("is-visible")
+            sourceCapLayer = ensureHoverSourceCapLayer(svg)
+            return if !sourceCapLayer?
+
+            totalDays = parseFloat(svg.getAttribute("data-total-days") or "0") or 0
+            totalDays = Math.max(1, totalDays)
+            rowCount = getSvgRowCount(svg)
+            svgRect = svg.getBoundingClientRect()
+            yScale = svgRect.height / Math.max(1, rowCount)
+            return if !isFinite(yScale) or yScale <= 0
+
+            endpointGap = getBarDetailUnits(0.08)
+            sourceCapHalfHeightY = 4 / yScale
+            incomingSourceRowIds = {}
+
+            _.each($scope.ctrl?.barLinks or [], (link) ->
+                sourceRowId = link?.sourceRowId
+                targetRowIdForLink = link?.targetRowId
+                return if !sourceRowId? or !targetRowIdForLink? or targetRowIdForLink != targetRowId
+                incomingSourceRowIds["#{sourceRowId}"] = true
+            )
+
+            _.each(incomingSourceRowIds, (isIncoming, sourceRowId) ->
+                return if !isIncoming
+
+                sourceBar = findBarByRowId(sourceRowId)
+                return if !sourceBar? or sourceBar.classList.contains("is-hidden")
+
+                sourceEndDay = parseFloat(sourceBar.getAttribute("data-end-day") or "0")
+                sourceRowIndex = parseFloat(sourceBar.getAttribute("data-row-index") or "0")
+                return if !isFinite(sourceEndDay) or !isFinite(sourceRowIndex)
+
+                sourceX = Math.min(totalDays, sourceEndDay + endpointGap)
+                sourceY = sourceRowIndex + 0.5
+
+                hoverSourceCap = document.createElementNS(SVG_NS, "path")
+                hoverSourceCap.setAttribute("class", "gantt-link-source-cap gantt-link-source-cap-hover is-visible")
+                hoverSourceCap.setAttribute("data-source-row-id", sourceRowId)
+                hoverSourceCap.setAttribute("data-target-row-id", targetRowId)
+                hoverSourceCap.setAttribute(
+                    "d",
+                    "M#{sourceX},#{sourceY - sourceCapHalfHeightY}L#{sourceX},#{sourceY + sourceCapHalfHeightY}"
+                )
+                sourceCapLayer.appendChild(hoverSourceCap)
+                hoverSourceCapPathsBySourceRowId["#{sourceRowId}"] = hoverSourceCap
             )
 
         hideLimitIndicator = (indicator) ->
@@ -4033,6 +4105,10 @@ GanttBarResizeDirective = ($document) ->
             clearLinkHover()
             setVisibleLinkSourceCapsForRow(null)
         )
+        unwatchBarLinks = $scope.$watchCollection("ctrl.barLinks", ->
+            return if !visibleLinkSourceCapsRowId?
+            setVisibleLinkSourceCapsForRow(visibleLinkSourceCapsRowId, true)
+        )
 
         rightPanel.addEventListener("mousemove", onHoverMouseMove)
         rightPanel.addEventListener("mousedown", onMouseDown)
@@ -4053,8 +4129,13 @@ GanttBarResizeDirective = ($document) ->
             stopLinkDrag(null, {cancel: true})
             linkDragPreviewPath?.remove()
             linkDragPreviewArrowhead?.remove()
+            clearHoverSourceCaps()
+            hoverSourceCapLayer?.remove()
+            hoverSourceCapLayer = null
+            visibleLinkSourceCapsRowId = null
             unwatchBarLock?()
             unwatchBarLinkMode?()
+            unwatchBarLinks?()
 
     return {link: link}
 

@@ -825,6 +825,7 @@
         background-size: 100% 100%, 100% 100%;
         height: calc(var(--gantt-visible-rows) * var(--gantt-row-height));
         min-height: calc(var(--gantt-visible-rows) * var(--gantt-row-height));
+        overflow: hidden;
         position: relative;
         right: 1px;
     }
@@ -843,8 +844,10 @@
     }
 
     .gantt-bars-layer {
+        contain: layout paint;
         height: 100%;
         inset: 0;
+        overflow: hidden;
         pointer-events: auto;
         position: absolute;
         width: 100%;
@@ -854,6 +857,7 @@
     .gantt-bars-svg {
         display: block;
         height: 100%;
+        overflow: hidden;
         width: 100%;
     }
 
@@ -889,7 +893,7 @@
         stroke-linecap: round;
         stroke-linejoin: round;
         stroke-width: 2;
-        transition: opacity .12s ease;
+        transition: none;
         vector-effect: non-scaling-stroke;
     }
 
