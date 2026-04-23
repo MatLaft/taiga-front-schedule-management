@@ -98,6 +98,20 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @loading = true
         @loadingError = false
 
+        return @_reloadGanttDataSilently().then =>
+            @loading = false
+        , (xhr) =>
+            @loading = false
+            @loadingError = true
+
+            if xhr?.status != 403 and xhr?.status != 404
+                @confirm.notify("error")
+
+            return @q.reject(xhr)
+
+    _reloadGanttDataSilently: ->
+        return @q.when() if !@scope.projectId
+
         promises = [
             @repo.queryMany("epics", {project: @scope.projectId, include_schedule: true})
             @repo.queryMany("userstories", {project: @scope.projectId, include_schedule: true})
@@ -113,15 +127,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 tasks or [],
                 scheduleDependencies or []
             )
-            @loading = false
-        , (xhr) =>
-            @loading = false
-            @loadingError = true
-
-            if xhr?.status != 403 and xhr?.status != 404
-                @confirm.notify("error")
-
-            return @q.reject(xhr)
+            @scope.$evalAsync()
+            return
 
     buildGanttData: (epics, userstories, tasks, scheduleDependencies = @sourceScheduleDependencies) ->
         @sourceEpics = epics or []
@@ -869,17 +876,22 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return @repo.save(row.item, true, {include_schedule: true}).then =>
             delete @savingRows[rowId]
-            return @_reloadDateAffectedEntities(affectedEntities).then =>
+            return @_reloadGanttDataSilently().then =>
                 @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
                 @confirm.notify("success") if options.notify != false
                 return
             , =>
-                @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
-                @timelineStartAnchor = null
-                @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
-                @scope.$evalAsync()
-                @confirm.notify("success") if options.notify != false
-                return
+                return @_reloadDateAffectedEntities(affectedEntities).then =>
+                    @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
+                    @confirm.notify("success") if options.notify != false
+                    return
+                , =>
+                    @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
+                    @timelineStartAnchor = null
+                    @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
+                    @scope.$evalAsync()
+                    @confirm.notify("success") if options.notify != false
+                    return
         , (errorData) =>
             row.item.revert()
             delete @savingRows[rowId]
