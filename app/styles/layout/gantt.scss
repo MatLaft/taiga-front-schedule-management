@@ -177,7 +177,7 @@
         border-radius: 4px;
         box-shadow: 4px 4px 8px rgba($color-black, .12);
         left: 0;
-        min-width: 11rem;
+        min-width: 12.5rem;
         padding: .5rem .75rem;
         position: absolute;
         top: calc(100% + .35rem);
@@ -215,6 +215,117 @@
         input[type='checkbox']:checked + span {
             color: $color-link-primary;
         }
+    }
+
+    .gantt-toolbar-zoom-slider {
+        align-items: center;
+        border-top: 1px solid $color-gray200;
+        color: $color-gray800;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: .45rem;
+        margin-top: .35rem;
+        padding-top: .45rem;
+    }
+
+    .gantt-toolbar-zoom-slider:focus,
+    .gantt-toolbar-zoom-slider:focus-visible,
+    .gantt-toolbar-zoom-slider:focus-within {
+        box-shadow: none;
+        outline: 0;
+    }
+
+    .gantt-toolbar-zoom-slider-sign {
+        align-items: center;
+        display: inline-flex;
+        flex: 0 0 1rem;
+        justify-content: center;
+        line-height: 0;
+        text-align: center;
+        width: 1rem;
+
+        svg {
+            display: block;
+            height: .95rem;
+            width: .95rem;
+        }
+    }
+
+    .gantt-toolbar-zoom-slider-input {
+        accent-color: $color-link-primary;
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+        flex: 1 1 auto;
+        margin: 0;
+        min-width: 0;
+        outline: 0;
+        width: 100%;
+    }
+
+    .gantt-toolbar-zoom-slider-input:focus,
+    .gantt-toolbar-zoom-slider-input:focus-visible,
+    .gantt-toolbar-zoom-slider-input:hover,
+    .gantt-toolbar-zoom-slider-input:active {
+        accent-color: $color-link-primary;
+        border: 0;
+        box-shadow: none;
+        outline: 0;
+    }
+
+    .gantt-toolbar-zoom-slider-input::-webkit-slider-runnable-track,
+    .gantt-toolbar-zoom-slider-input::-moz-range-track,
+    .gantt-toolbar-zoom-slider-input::-moz-range-progress {
+        background: $color-link-primary;
+    }
+
+    .gantt-toolbar-zoom-slider-input:hover::-webkit-slider-runnable-track,
+    .gantt-toolbar-zoom-slider-input:hover::-moz-range-track,
+    .gantt-toolbar-zoom-slider-input:hover::-moz-range-progress,
+    .gantt-toolbar-zoom-slider-input:focus::-webkit-slider-runnable-track,
+    .gantt-toolbar-zoom-slider-input:focus::-moz-range-track,
+    .gantt-toolbar-zoom-slider-input:focus::-moz-range-progress,
+    .gantt-toolbar-zoom-slider-input:active::-webkit-slider-runnable-track,
+    .gantt-toolbar-zoom-slider-input:active::-moz-range-track,
+    .gantt-toolbar-zoom-slider-input:active::-moz-range-progress {
+        background: $color-link-primary;
+    }
+
+    .gantt-toolbar-zoom-slider-input::-webkit-slider-thumb,
+    .gantt-toolbar-zoom-slider-input::-moz-range-thumb {
+        background: $color-link-primary;
+        border: 0;
+        box-shadow: none;
+    }
+
+    .gantt-toolbar-zoom-slider-input:hover::-webkit-slider-runnable-track,
+    .gantt-toolbar-zoom-slider-input:focus::-webkit-slider-runnable-track,
+    .gantt-toolbar-zoom-slider-input:active::-webkit-slider-runnable-track,
+    .gantt-toolbar-zoom-slider-input:hover::-moz-range-track,
+    .gantt-toolbar-zoom-slider-input:focus::-moz-range-track,
+    .gantt-toolbar-zoom-slider-input:active::-moz-range-track,
+    .gantt-toolbar-zoom-slider-input:hover::-moz-range-progress,
+    .gantt-toolbar-zoom-slider-input:focus::-moz-range-progress,
+    .gantt-toolbar-zoom-slider-input:active::-moz-range-progress,
+    .gantt-toolbar-zoom-slider-input:hover::-webkit-slider-thumb,
+    .gantt-toolbar-zoom-slider-input:focus::-webkit-slider-thumb,
+    .gantt-toolbar-zoom-slider-input:active::-webkit-slider-thumb,
+    .gantt-toolbar-zoom-slider-input:hover::-moz-range-thumb,
+    .gantt-toolbar-zoom-slider-input:focus::-moz-range-thumb,
+    .gantt-toolbar-zoom-slider-input:active::-moz-range-thumb {
+        background: $color-link-primary;
+    }
+
+    .gantt-toolbar-zoom-slider-input::-moz-focus-outer {
+        border: 0;
+    }
+
+    .gantt-toolbar-zoom-slider.is-disabled {
+        opacity: .45;
+    }
+
+    .gantt-toolbar-zoom-slider.is-disabled .gantt-toolbar-zoom-slider-input {
+        cursor: not-allowed;
     }
 
     .gantt-panels {
@@ -800,8 +911,14 @@
 
     .gantt-bar {
         opacity: .95;
+        outline: none;
         pointer-events: auto;
         transition: opacity .12s ease, stroke .12s ease, stroke-width .12s ease;
+
+        &:focus,
+        &:focus-visible {
+            outline: none;
+        }
     }
 
     .gantt-bar.is-hidden {

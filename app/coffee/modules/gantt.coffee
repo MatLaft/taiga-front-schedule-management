@@ -31,6 +31,13 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @dayWidthRem = 2.2
         @weekWidthRem = 7
         @monthDayWidthRem = 0.35
+        @weeklyColumnWidthRemMin = 4.2
+        @weeklyColumnWidthRemMax = 12
+        @monthlyDayWidthRemMin = 0.2
+        @monthlyDayWidthRemMax = 0.8
+        @timelineWidthSliderMin = 0
+        @timelineWidthSliderMax = 100
+        @timelineWidthSliderStep = 1
 
         @loading = false
         @loadingError = false
@@ -51,6 +58,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @colorMenuOpenUpwardByRowId = {}
         @zoomMenuOpen = false
         @selectedZoomOption = "daily"
+        @timelineWidthSliderValue = @timelineWidthSliderMin
         @barsLocked = true
         @colorPickerModeActive = false
         @barLinkModeActive = false
@@ -90,6 +98,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     loadInitialData: ->
         @loadProject()
         @_restoreZoomOptionFromCookie()
+        @_syncTimelineWidthSliderValue()
         return @load()
 
     load: ->
@@ -396,6 +405,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     toggleZoomMenu: (event) ->
         @stopToolbarMenuEvent(event)
         @zoomMenuOpen = !@zoomMenuOpen
+        @_syncTimelineWidthSliderValue() if @zoomMenuOpen
 
     isBarEditingLocked: ->
         return !!@barsLocked
@@ -725,8 +735,103 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         @selectedZoomOption = option
         @_persistZoomOption()
+        @_syncTimelineWidthSliderValue()
 
         @timelineStartAnchor = null
+        @_refreshComputedData()
+        @scope.$evalAsync()
+
+    isTimelineWidthSliderDisabled: ->
+        return @_getTimelineScale() == "daily"
+
+    _getScaleWidthBounds: (scale = @_getTimelineScale()) ->
+        if scale == "weekly"
+            return {
+                min: @weeklyColumnWidthRemMin
+                max: @weeklyColumnWidthRemMax
+            }
+
+        if scale == "monthly"
+            return {
+                min: @monthlyDayWidthRemMin
+                max: @monthlyDayWidthRemMax
+            }
+
+        return null
+
+    _clampScaleWidthValue: (value, bounds) ->
+        parsedValue = parseFloat(value)
+        parsedValue = bounds.min if isNaN(parsedValue)
+        parsedValue = Math.max(bounds.min, parsedValue)
+        parsedValue = Math.min(bounds.max, parsedValue)
+        return parsedValue
+
+    _normalizeTimelineWidthSliderValue: (value) ->
+        normalizedValue = parseFloat(value)
+        normalizedValue = @timelineWidthSliderMin if isNaN(normalizedValue)
+        normalizedValue = Math.max(@timelineWidthSliderMin, normalizedValue)
+        normalizedValue = Math.min(@timelineWidthSliderMax, normalizedValue)
+        return normalizedValue
+
+    _getCurrentScaleWidthValue: (scale = @_getTimelineScale()) ->
+        return @weekWidthRem if scale == "weekly"
+        return @monthDayWidthRem if scale == "monthly"
+        return null
+
+    _setCurrentScaleWidthValue: (scale, value) ->
+        if scale == "weekly"
+            @weekWidthRem = value
+            return
+
+        if scale == "monthly"
+            @monthDayWidthRem = value
+            return
+
+    _sliderValueToScaleWidth: (sliderValue, bounds) ->
+        minSlider = @timelineWidthSliderMin
+        maxSlider = @timelineWidthSliderMax
+        sliderSpan = maxSlider - minSlider
+
+        return bounds.min if sliderSpan <= 0
+
+        normalizedSliderValue = @_normalizeTimelineWidthSliderValue(sliderValue)
+        ratio = (normalizedSliderValue - minSlider) / sliderSpan
+        return bounds.min + ((bounds.max - bounds.min) * ratio)
+
+    _scaleWidthToSliderValue: (widthValue, bounds) ->
+        widthSpan = bounds.max - bounds.min
+        return @timelineWidthSliderMin if widthSpan <= 0
+
+        clampedWidth = @_clampScaleWidthValue(widthValue, bounds)
+        ratio = (clampedWidth - bounds.min) / widthSpan
+        return @timelineWidthSliderMin + ((@timelineWidthSliderMax - @timelineWidthSliderMin) * ratio)
+
+    _syncTimelineWidthSliderValue: ->
+        scale = @_getTimelineScale()
+        bounds = @_getScaleWidthBounds(scale)
+        return if !bounds?
+
+        widthValue = @_getCurrentScaleWidthValue(scale)
+        sliderValue = @_scaleWidthToSliderValue(widthValue, bounds)
+        @timelineWidthSliderValue = Math.round(sliderValue)
+
+    onTimelineWidthSliderInput: (event) ->
+        @stopToolbarMenuEvent(event)
+        return if @isTimelineWidthSliderDisabled()
+
+        scale = @_getTimelineScale()
+        bounds = @_getScaleWidthBounds(scale)
+        return if !bounds?
+
+        sliderValue = @_normalizeTimelineWidthSliderValue(@timelineWidthSliderValue)
+        @timelineWidthSliderValue = Math.round(sliderValue)
+
+        nextWidthValue = @_sliderValueToScaleWidth(sliderValue, bounds)
+        nextWidthValue = @_clampScaleWidthValue(nextWidthValue, bounds)
+        currentWidthValue = @_getCurrentScaleWidthValue(scale)
+        return if currentWidthValue? and Math.abs(nextWidthValue - currentWidthValue) < 0.0001
+
+        @_setCurrentScaleWidthValue(scale, nextWidthValue)
         @_refreshComputedData()
         @scope.$evalAsync()
 
@@ -736,14 +841,24 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return "daily"
 
     _getColumnWidthRem: (scale = @_getTimelineScale()) ->
-        return @weekWidthRem if scale == "weekly"
-        return @monthDayWidthRem * 30 if scale == "monthly"
+        if scale == "weekly"
+            bounds = @_getScaleWidthBounds("weekly")
+            return @_clampScaleWidthValue(@weekWidthRem, bounds)
+
+        if scale == "monthly"
+            bounds = @_getScaleWidthBounds("monthly")
+            return @_clampScaleWidthValue(@monthDayWidthRem, bounds) * 30
+
         return @dayWidthRem
 
     _getTimelineSlotWidthRem: (scale = @_getTimelineScale()) ->
         columnWidthRem = @_getColumnWidthRem(scale)
         return (columnWidthRem / 7) if scale == "weekly"
-        return @monthDayWidthRem if scale == "monthly"
+
+        if scale == "monthly"
+            bounds = @_getScaleWidthBounds("monthly")
+            return @_clampScaleWidthValue(@monthDayWidthRem, bounds)
+
         return columnWidthRem
 
     _getWeeklyRangeLabel: (startMoment, endMoment) ->
