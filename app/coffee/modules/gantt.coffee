@@ -2507,36 +2507,46 @@ GanttSyncRowsDirective = ->
 
             linkPaths = Array.from(barsSvg.querySelectorAll(".gantt-link-path[data-link-id][data-source-row-id][data-target-row-id]"))
             arrowheads = Array.from(barsSvg.querySelectorAll(".gantt-link-arrowhead[data-link-id]"))
+            sourceCaps = Array.from(barsSvg.querySelectorAll(".gantt-link-source-cap[data-link-id]"))
             arrowheadsByLinkId = {}
+            sourceCapsByLinkId = {}
             _.each(arrowheads, (arrowhead) ->
                 linkId = arrowhead.getAttribute("data-link-id")
                 arrowheadsByLinkId[linkId] = arrowhead if linkId?
+            )
+            _.each(sourceCaps, (sourceCap) ->
+                linkId = sourceCap.getAttribute("data-link-id")
+                sourceCapsByLinkId[linkId] = sourceCap if linkId?
             )
             endpointGap = getBarDetailUnits(0.08)
             svgRect = barsSvg.getBoundingClientRect()
             xScale = svgRect.width / totalDays
             yScale = svgRect.height / Math.max(1, visibleRowsCount)
 
-            hideLink = (linkPath, arrowhead) ->
+            hideLink = (linkPath, arrowhead, sourceCap) ->
                 linkPath.classList.add("is-hidden")
                 arrowhead?.classList?.add("is-hidden")
+                sourceCap?.classList?.remove("is-visible")
+                sourceCap?.classList?.add("is-hidden")
 
             if !isFinite(xScale) or !isFinite(yScale) or xScale <= 0 or yScale <= 0
                 _.each(linkPaths, (linkPath) ->
-                    hideLink(linkPath, arrowheadsByLinkId[linkPath.getAttribute("data-link-id")])
+                    linkId = linkPath.getAttribute("data-link-id")
+                    hideLink(linkPath, arrowheadsByLinkId[linkId], sourceCapsByLinkId[linkId])
                 )
                 return
 
             linkPaths.forEach (linkPath) ->
                 linkId = linkPath.getAttribute("data-link-id")
                 arrowhead = arrowheadsByLinkId[linkId]
+                sourceCap = sourceCapsByLinkId[linkId]
                 sourceRowId = linkPath.getAttribute("data-source-row-id")
                 targetRowId = linkPath.getAttribute("data-target-row-id")
                 sourceBar = barsByRowId[sourceRowId]
                 targetBar = barsByRowId[targetRowId]
 
-                if !sourceBar? or !targetBar? or !arrowhead?
-                    hideLink(linkPath, arrowhead)
+                if !sourceBar? or !targetBar? or !arrowhead? or !sourceCap?
+                    hideLink(linkPath, arrowhead, sourceCap)
                     return
 
                 sourceStartDay = parseFloat(sourceBar.getAttribute("data-start-day") or "1")
@@ -2546,7 +2556,7 @@ GanttSyncRowsDirective = ->
                 targetRowIndex = parseFloat(targetBar.getAttribute("data-row-index") or "0")
 
                 if !isFinite(sourceEndDay) or !isFinite(targetStartDay) or !isFinite(sourceRowIndex) or !isFinite(targetRowIndex)
-                    hideLink(linkPath, arrowhead)
+                    hideLink(linkPath, arrowhead, sourceCap)
                     return
 
                 sourceX = Math.min(totalDays, sourceEndDay + endpointGap)
@@ -2560,11 +2570,14 @@ GanttSyncRowsDirective = ->
                 targetTopY = targetRowIndex + targetTopOffset
                 targetBottomY = targetRowIndex + targetBottomOffset
                 linkRoute = buildLinkRoute(sourceX, sourceY, targetX, targetY, targetTopY, targetBottomY, totalDays, xScale, yScale)
+                sourceCapHalfHeightY = 4 / yScale
 
                 linkPath.setAttribute("d", linkRoute.path)
                 arrowhead.setAttribute("d", buildArrowheadPath(linkRoute.tipX, linkRoute.tipY, linkRoute.direction, xScale, yScale))
+                sourceCap.setAttribute("d", "M#{sourceX},#{sourceY - sourceCapHalfHeightY}L#{sourceX},#{sourceY + sourceCapHalfHeightY}")
                 linkPath.classList.remove("is-hidden")
                 arrowhead.classList.remove("is-hidden")
+                sourceCap.classList.remove("is-hidden")
 
         syncBars = (visibleRowMap, visibleRowsCount) ->
             barsData = getBarsData()
@@ -3076,6 +3089,20 @@ GanttBarResizeDirective = ($document) ->
                 return candidate.getAttribute("data-gantt-row-id") == rowId
             )
 
+        setVisibleLinkSourceCapsForRow = (rowId = null) ->
+            sourceCaps = Array.from(root.querySelectorAll(".gantt-link-source-cap[data-source-row-id]"))
+            _.each(sourceCaps, (sourceCap) ->
+                sourceCap.classList.remove("is-visible")
+            )
+
+            return if !rowId?
+
+            _.each(sourceCaps, (sourceCap) ->
+                return if sourceCap.classList.contains("is-hidden")
+                if sourceCap.getAttribute("data-target-row-id") == rowId
+                    sourceCap.classList.add("is-visible")
+            )
+
         hideLimitIndicator = (indicator) ->
             indicator?.classList?.remove("is-visible")
 
@@ -3206,6 +3233,7 @@ GanttBarResizeDirective = ($document) ->
 
             linkHoveredBar = bar
             linkHoveredBar.classList.add("is-link-target")
+            setVisibleLinkSourceCapsForRow(linkHoveredBar.getAttribute("data-gantt-row-id"))
 
         buildIndicatorLinePath = (height, edge) ->
             top = 1
@@ -3425,6 +3453,7 @@ GanttBarResizeDirective = ($document) ->
 
             hoveredBar = bar
             hoveredEdge = edge
+            setVisibleLinkSourceCapsForRow(hoveredBar.getAttribute("data-gantt-row-id"))
 
             if edge == "move"
                 hoveredBar.classList.add("is-move-bar")
@@ -3771,8 +3800,14 @@ GanttBarResizeDirective = ($document) ->
         onHoverMouseMove = (event) ->
             return if active? or activeLinkDrag?
 
+            hoveredBarElement = getNearestBarElement(event.target)
+            if hoveredBarElement? and !hoveredBarElement.classList.contains("is-hidden")
+                setVisibleLinkSourceCapsForRow(hoveredBarElement.getAttribute("data-gantt-row-id"))
+            else
+                setVisibleLinkSourceCapsForRow(null)
+
             if isBarLinkModeActive()
-                bar = getNearestBarElement(event.target)
+                bar = hoveredBarElement
                 if !bar? or bar.classList.contains("is-hidden")
                     clearLinkHover()
                     clearHover()
@@ -3787,7 +3822,7 @@ GanttBarResizeDirective = ($document) ->
                 clearHover()
                 return
 
-            bar = getNearestBarElement(event.target)
+            bar = hoveredBarElement
 
             if !bar? or bar.classList.contains("is-hidden")
                 clearHover()
@@ -3842,6 +3877,7 @@ GanttBarResizeDirective = ($document) ->
             return if active? or activeLinkDrag?
             clearHover()
             clearLinkHover()
+            setVisibleLinkSourceCapsForRow(null)
 
         unwatchBarLock = $scope.$watch("ctrl.barsLocked", (locked) ->
             return if !locked
@@ -3854,6 +3890,7 @@ GanttBarResizeDirective = ($document) ->
             return if activeLinkMode
             stopLinkDrag(null, {cancel: true})
             clearLinkHover()
+            setVisibleLinkSourceCapsForRow(null)
         )
 
         rightPanel.addEventListener("mousemove", onHoverMouseMove)
@@ -3866,6 +3903,7 @@ GanttBarResizeDirective = ($document) ->
             rightPanel.removeEventListener("mouseleave", onMouseLeave)
             clearHover()
             clearLinkHover()
+            setVisibleLinkSourceCapsForRow(null)
             edgeIndicator.remove()
             limitIndicator.remove()
             moveEndLimitIndicator.remove()

@@ -770,6 +770,22 @@
         vector-effect: non-scaling-stroke;
     }
 
+    .gantt-link-source-cap {
+        fill: none;
+        opacity: 0;
+        pointer-events: none;
+        stroke: $color-link-primary;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2;
+        transition: opacity .12s ease;
+        vector-effect: non-scaling-stroke;
+    }
+
+    .gantt-link-source-cap.is-visible {
+        opacity: 1;
+    }
+
     .gantt-link-path.gantt-link-preview,
     .gantt-link-arrowhead.gantt-link-preview {
         opacity: .22;
@@ -777,7 +793,8 @@
     }
 
     .gantt-link-path.is-hidden,
-    .gantt-link-arrowhead.is-hidden {
+    .gantt-link-arrowhead.is-hidden,
+    .gantt-link-source-cap.is-hidden {
         display: none;
     }
 
