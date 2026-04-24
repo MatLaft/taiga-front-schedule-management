@@ -24,7 +24,7 @@ div.wrapper.gantt(
             tg-gantt-sync-rows
             tg-gantt-panel-resize
             tg-gantt-bar-resize
-            ng-class="{'is-linking-gantt-bars': ctrl.barLinkModeActive}"
+            ng-class="{'is-linking-gantt-bars': ctrl.barLinkModeActive, 'is-bar-editing-unlocked': !ctrl.barsLocked}"
             ng-if="!ctrl.loading && !ctrl.loadingError"
         )
             .gantt-toolbar

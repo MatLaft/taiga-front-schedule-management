@@ -685,6 +685,26 @@
         overflow: visible;
     }
 
+    .gantt-workspace.is-bar-editing-unlocked .gantt-tree-row > .gantt-col-title {
+        padding-inline-start: 1rem;
+    }
+
+    .gantt-workspace.is-bar-editing-unlocked .gantt-tree-row > .gantt-col-title::before {
+        background: $color-gray400;
+        border-radius: 1px;
+        box-shadow:
+            0 -.24rem 0 0 $color-gray400,
+            0 .24rem 0 0 $color-gray400;
+        content: '';
+        height: 2px;
+        inset-inline-start: .25rem;
+        pointer-events: none;
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        width: .55rem;
+    }
+
     .gantt-tree-row .gantt-col-assignee,
     .gantt-tree-row .gantt-col-eh,
     .gantt-tree-row .gantt-col-start,
