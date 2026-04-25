@@ -1209,7 +1209,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return null
 
     _buildTree: (epics, userstories, tasks) ->
-        epicNodes = _.map(@_sortById(epics), (epic) => @_buildNode("epic", epic))
+        epicNodes = _.map(@_sortBySchedulePositionWithIdFallback(epics), (epic) => @_buildNode("epic", epic))
         epicNodesById = {}
         rootStoryNodes = []
         rootTaskNodes = []
@@ -1222,7 +1222,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         storyNodesById = {}
 
-        _.each(@_sortById(userstories), (story) =>
+        _.each(@_sortBySchedulePositionWithIdFallback(userstories), (story) =>
             storyNode = @_buildNode("story", story)
             storyNodesById["#{story.id}"] = storyNode
 
@@ -1239,7 +1239,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 rootStoryNodes.push(storyNode)
         )
 
-        _.each(@_sortById(tasks), (task) =>
+        _.each(@_sortBySchedulePositionWithIdFallback(tasks), (task) =>
             taskNode = @_buildNode("task", task)
             storyId = @_extractStoryId(task)
             parentStory = storyNodesById["#{storyId}"]
@@ -1397,6 +1397,20 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return task.user_story if task.user_story?
         return task.user_story_extra_info.id if task.user_story_extra_info?.id?
         return null
+
+    _sortBySchedulePositionWithIdFallback: (items = []) ->
+        itemsById = @_sortById(items)
+        return _.sortBy(itemsById, (item) ->
+            rawPosition = item?.schedule_position
+
+            if _.isNumber(rawPosition) and isFinite(rawPosition) and rawPosition > 0
+                return rawPosition
+
+            numericPosition = parseInt(rawPosition, 10)
+            return numericPosition if !isNaN(numericPosition) and numericPosition > 0
+
+            return 9007199254740991
+        )
 
     _sortById: (items = []) ->
         return _.sortBy(items or [], (item) ->
