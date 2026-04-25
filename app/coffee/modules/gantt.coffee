@@ -71,6 +71,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @barChangeRedoStack = []
         @barChangeHistoryLimit = 100
         @barHistoryBusy = false
+        @treeRowReorderBusy = false
 
         @documentClickHandler = (event) => @onDocumentClick(event)
         angular.element(document).on("click", @documentClickHandler)
@@ -170,6 +171,128 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @timeline = @_buildTimeline(flatRows)
         @ganttBars = @_buildBars(flatRows, @timeline)
         @_pruneBarLinks()
+
+    _findTreeRowLocation: (rowId, nodes = @tree, parentRow = null) ->
+        return null if !rowId? or !_.isArray(nodes)
+
+        for node, index in nodes
+            continue if !node?
+
+            if node.rowId == rowId
+                return {
+                    row: node
+                    index: index
+                    siblings: nodes
+                    parentRow: parentRow
+                }
+
+            if _.isArray(node.children) and node.children.length
+                childLocation = @_findTreeRowLocation(rowId, node.children, node)
+                return childLocation if childLocation?
+
+        return null
+
+    getGanttRowReorderContext: (rowId) ->
+        location = @_findTreeRowLocation(rowId)
+        return null if !location?.row?
+
+        rowType = location.row.type
+        siblingRows = _.filter(location.siblings or [], (candidate) ->
+            return candidate?.type == rowType
+        )
+        siblingRowIds = _.compact(_.map(siblingRows, (candidate) ->
+            return candidate?.rowId
+        ))
+        rowIndex = siblingRowIds.indexOf(rowId)
+
+        return {
+            rowId: rowId
+            rowType: rowType
+            rowIndex: rowIndex
+            parentRowId: location.parentRow?.rowId or null
+            siblingRowIds: siblingRowIds
+        }
+
+    requestGanttRowReorder: (rowId, targetIndex) ->
+        return @q.when(false) if @treeRowReorderBusy
+
+        context = @getGanttRowReorderContext(rowId)
+        return @q.when(false) if !context? or !_.isArray(context.siblingRowIds)
+
+        currentIndex = parseInt(context.rowIndex, 10)
+        return @q.when(false) if isNaN(currentIndex) or currentIndex < 0
+
+        numericTargetIndex = parseInt(targetIndex, 10)
+        return @q.when(false) if isNaN(numericTargetIndex)
+
+        maxIndex = Math.max(0, context.siblingRowIds.length - 1)
+        numericTargetIndex = Math.max(0, Math.min(maxIndex, numericTargetIndex))
+        return @q.when(false) if numericTargetIndex == currentIndex
+
+        row = @rowNodesById[rowId]
+        return @q.when(false) if !row?.item?
+
+        itemToSave = row.item
+        if _.isFunction(row.item.realClone)
+            itemToSave = row.item.realClone()
+            itemToSave.revert?()
+
+        itemToSave.setAttr("position", numericTargetIndex + 1)
+        @treeRowReorderBusy = true
+
+        return @repo.save(itemToSave, true, {include_schedule: true}).then =>
+            return @_reloadGanttDataSilently().then =>
+                @confirm.notify("success")
+                return true
+            , =>
+                moved = @moveGanttRowWithinSiblings(rowId, numericTargetIndex)
+                @confirm.notify("success")
+                return moved
+        , (errorData) =>
+            message = @_extractApiErrorMessage(errorData)
+            @confirm.notify("error", message)
+            return @q.reject(errorData)
+        .finally =>
+            @treeRowReorderBusy = false
+            @scope.$evalAsync()
+
+    moveGanttRowWithinSiblings: (rowId, targetIndex) ->
+        location = @_findTreeRowLocation(rowId)
+        return false if !location?.row? or !_.isArray(location.siblings)
+
+        rowType = location.row.type
+        siblingRows = _.filter(location.siblings, (candidate) ->
+            return candidate?.type == rowType
+        )
+        return false if siblingRows.length < 2
+
+        siblingRowIds = _.compact(_.map(siblingRows, (candidate) ->
+            return candidate?.rowId
+        ))
+        currentIndex = siblingRowIds.indexOf(rowId)
+        return false if currentIndex == -1
+
+        numericTargetIndex = parseInt(targetIndex, 10)
+        return false if isNaN(numericTargetIndex)
+        numericTargetIndex = Math.max(0, Math.min(siblingRows.length - 1, numericTargetIndex))
+        return false if numericTargetIndex == currentIndex
+
+        reorderedSiblingRows = siblingRows.slice(0)
+        movingRow = reorderedSiblingRows.splice(currentIndex, 1)[0]
+        reorderedSiblingRows.splice(numericTargetIndex, 0, movingRow)
+
+        siblingPositions = []
+        _.each(location.siblings, (candidate, index) ->
+            siblingPositions.push(index) if candidate?.type == rowType
+        )
+
+        _.each(siblingPositions, (position, index) ->
+            location.siblings[position] = reorderedSiblingRows[index]
+        )
+
+        @_refreshComputedData()
+        @scope.$evalAsync()
+        return true
 
     _rowIdFromScheduleEntity: (entityType, entityId) ->
         normalizedType = "#{entityType or ''}".toLowerCase()
@@ -3022,6 +3145,285 @@ GanttSyncRowsDirective = ->
     return {link: link}
 
 module.directive("tgGanttSyncRows", [GanttSyncRowsDirective])
+
+GanttTreeReorderDirective = ($document) ->
+    link = ($scope, $el) ->
+        root = $el[0]
+        leftPanel = root.querySelector(".gantt-left-panel")
+        return if !leftPanel?
+
+        HANDLE_SELECTOR = ".gantt-tree-reorder-handle"
+        DRAG_GHOST_OFFSET_X = 12
+        DRAG_GHOST_OFFSET_Y = 10
+        HANDLE_HOVER_CLASS = "is-hovering-tree-reorder-handle"
+        DRAG_CLASS = "is-dragging-gantt-tree-row"
+        active = null
+
+        dragGhost = document.createElement("div")
+        dragGhost.setAttribute("class", "gantt-tree-row-drag-ghost")
+        dragGhost.style.display = "none"
+        dragGhost.style.left = "-9999px"
+        dragGhost.style.pointerEvents = "none"
+        dragGhost.style.position = "fixed"
+        dragGhost.style.top = "-9999px"
+        dragGhost.style.zIndex = "34"
+        root.appendChild(dragGhost)
+
+        dropIndicator = document.createElement("div")
+        dropIndicator.setAttribute("class", "gantt-tree-row-drop-indicator")
+        leftPanel.appendChild(dropIndicator)
+
+        hideDragGhost = ->
+            dragGhost.classList.remove("is-visible")
+            dragGhost.style.display = "none"
+            dragGhost.style.left = "-9999px"
+            dragGhost.style.top = "-9999px"
+
+        hideDropIndicator = ->
+            dropIndicator.classList.remove("is-visible")
+
+        isTreeReorderEnabled = ->
+            ctrl = $scope.ctrl
+            return false if !ctrl?
+            return false if ctrl.barsLocked
+            return false if ctrl.barHistoryBusy
+            return false if ctrl.treeRowReorderBusy
+            return false if ctrl.colorPickerModeActive
+            return false if ctrl.barLinkModeActive
+            return true
+
+        getClosestTreeRow = (target) ->
+            node = target
+
+            while node? and node != leftPanel
+                if node.classList?.contains("gantt-tree-row")
+                    rowId = node.getAttribute?("data-gantt-row-id")
+                    return node if rowId?
+
+                node = node.parentNode
+
+            return null
+
+        getRowHandle = (row) ->
+            return null if !row?
+            return row.querySelector(HANDLE_SELECTOR)
+
+        findHandleFromTarget = (target, row) ->
+            return null if !target? or !row?
+
+            node = target
+            while node? and node != row and node != leftPanel
+                return node if node.classList?.contains("gantt-tree-reorder-handle")
+                node = node.parentNode
+
+            if node == row
+                return node if node.classList?.contains("gantt-tree-reorder-handle")
+            return null
+
+        isEventOnReorderHandle = (event, row = null) ->
+            return false if !event?
+            row = getClosestTreeRow(event.target) if !row?
+            return false if !row?
+
+            rowHandle = getRowHandle(row)
+            return false if !rowHandle? or !rowHandle.offsetParent?
+            return !!findHandleFromTarget(event.target, row)
+
+        setHandleHoverState = (isActive) ->
+            leftPanel.classList.toggle(HANDLE_HOVER_CLASS, !!isActive)
+
+        getRowElementById = (rowId) ->
+            return null if !rowId?
+            return leftPanel.querySelector(".gantt-tree-row[data-gantt-row-id=\"#{rowId}\"]")
+
+        updateDragGhostPosition = (clientX, clientY) ->
+            dragGhost.style.left = "#{Math.round(clientX + DRAG_GHOST_OFFSET_X)}px"
+            dragGhost.style.top = "#{Math.round(clientY + DRAG_GHOST_OFFSET_Y)}px"
+
+        resolveDropTarget = (clientY) ->
+            return null if !active?
+
+            siblingRows = _.compact(_.map(active.siblingRowIds or [], (rowId) ->
+                return getRowElementById(rowId)
+            ))
+            visibleSiblingRows = _.filter(siblingRows, (row) ->
+                return row.offsetParent?
+            )
+            return null if !visibleSiblingRows.length
+
+            referenceRows = _.filter(visibleSiblingRows, (row) ->
+                return row.getAttribute("data-gantt-row-id") != active.rowId
+            )
+            return null if !referenceRows.length
+
+            rowMetrics = _.map(referenceRows, (row) ->
+                rect = row.getBoundingClientRect()
+                return {
+                    row: row
+                    top: rect.top
+                    bottom: rect.bottom
+                    mid: rect.top + (rect.height / 2)
+                }
+            )
+
+            insertIndex = rowMetrics.length
+            if clientY < rowMetrics[0].mid
+                insertIndex = 0
+            else if clientY >= rowMetrics[rowMetrics.length - 1].mid
+                insertIndex = rowMetrics.length
+            else
+                for metric, index in rowMetrics
+                    continue if index == 0
+
+                    previousMetric = rowMetrics[index - 1]
+                    if clientY >= previousMetric.mid and clientY < metric.mid
+                        insertIndex = index
+                        break
+
+            lineTopClient = if insertIndex >= rowMetrics.length
+                rowMetrics[rowMetrics.length - 1].bottom
+            else
+                rowMetrics[insertIndex].top
+
+            panelRect = leftPanel.getBoundingClientRect()
+            lineTop = lineTopClient - panelRect.top + leftPanel.scrollTop
+
+            return {
+                targetIndex: insertIndex
+                lineTop: lineTop
+            }
+
+        updateDropIndicator = (clientY) ->
+            target = resolveDropTarget(clientY)
+
+            if !target?
+                active.targetIndex = null if active?
+                hideDropIndicator()
+                return
+
+            if _.isNumber(active?.currentIndex) and target.targetIndex == active.currentIndex
+                active.targetIndex = null if active?
+                hideDropIndicator()
+                return
+
+            active.targetIndex = target.targetIndex if active?
+
+            dropIndicator.style.top = "#{Math.round(target.lineTop)}px"
+            dropIndicator.style.left = "0px"
+            dropIndicator.style.width = "#{Math.max(leftPanel.scrollWidth, leftPanel.clientWidth)}px"
+            dropIndicator.classList.add("is-visible")
+
+        stopTreeRowDrag = ->
+            return if !active?
+
+            finishedDrag = active
+            active = null
+
+            $document.off("mousemove", onTreeRowDragMouseMove)
+            $document.off("mouseup", onTreeRowDragMouseUp)
+            root.classList.remove(DRAG_CLASS)
+            setHandleHoverState(false)
+            hideDragGhost()
+            hideDropIndicator()
+
+            return if !_.isNumber(finishedDrag.targetIndex)
+
+            $scope.ctrl?.requestGanttRowReorder?(finishedDrag.rowId, finishedDrag.targetIndex)
+
+        startTreeRowDrag = (event, row) ->
+            rowId = row.getAttribute("data-gantt-row-id")
+            return false if !rowId?
+
+            context = $scope.ctrl?.getGanttRowReorderContext?(rowId)
+            return false if !context? or !_.isArray(context.siblingRowIds)
+            return false if context.siblingRowIds.length < 2
+
+            active = {
+                rowId: rowId
+                siblingRowIds: context.siblingRowIds.slice(0)
+                currentIndex: context.rowIndex
+                targetIndex: null
+            }
+
+            rowRect = row.getBoundingClientRect()
+            dragGhost.style.width = "#{Math.round(rowRect.width)}px"
+            dragGhost.style.height = "#{Math.round(rowRect.height)}px"
+            dragGhost.style.display = "block"
+            updateDragGhostPosition(event.clientX, event.clientY)
+            dragGhost.classList.add("is-visible")
+            root.classList.add(DRAG_CLASS)
+            setHandleHoverState(false)
+            updateDropIndicator(event.clientY)
+
+            $document.on("mousemove", onTreeRowDragMouseMove)
+            $document.on("mouseup", onTreeRowDragMouseUp)
+            return true
+
+        onTreeRowHoverMouseMove = (event) ->
+            return if active?
+
+            if !isTreeReorderEnabled()
+                setHandleHoverState(false)
+                return
+
+            row = getClosestTreeRow(event.target)
+            if !row?
+                setHandleHoverState(false)
+                return
+
+            setHandleHoverState(isEventOnReorderHandle(event, row))
+
+        onTreeRowMouseDown = (event) ->
+            return if event.button? and event.button != 0
+            return if active?
+            return if !isTreeReorderEnabled()
+
+            row = getClosestTreeRow(event.target)
+            return if !row?
+            return if !isEventOnReorderHandle(event, row)
+            return if !startTreeRowDrag(event, row)
+
+            event.preventDefault()
+            event.stopPropagation()
+
+        onTreeRowMouseLeave = ->
+            return if active?
+            setHandleHoverState(false)
+
+        onTreeRowDragMouseMove = (event) ->
+            return if !active?
+            updateDragGhostPosition(event.clientX, event.clientY)
+            updateDropIndicator(event.clientY)
+            event.preventDefault()
+
+        onTreeRowDragMouseUp = (event) ->
+            return if !active?
+            event.preventDefault()
+            stopTreeRowDrag()
+
+        unwatchBarsLock = $scope.$watch("ctrl.barsLocked", (locked) ->
+            if locked
+                stopTreeRowDrag()
+                setHandleHoverState(false)
+        )
+
+        leftPanel.addEventListener("mousemove", onTreeRowHoverMouseMove)
+        leftPanel.addEventListener("mousedown", onTreeRowMouseDown)
+        leftPanel.addEventListener("mouseleave", onTreeRowMouseLeave)
+
+        $scope.$on "$destroy", ->
+            leftPanel.removeEventListener("mousemove", onTreeRowHoverMouseMove)
+            leftPanel.removeEventListener("mousedown", onTreeRowMouseDown)
+            leftPanel.removeEventListener("mouseleave", onTreeRowMouseLeave)
+            stopTreeRowDrag()
+            setHandleHoverState(false)
+            dropIndicator.remove()
+            dragGhost.remove()
+            unwatchBarsLock?()
+
+    return {link: link}
+
+module.directive("tgGanttTreeReorder", ["$document", GanttTreeReorderDirective])
 
 GanttBarResizeDirective = ($document) ->
     link = ($scope, $el) ->

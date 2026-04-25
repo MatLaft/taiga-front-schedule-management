@@ -23,6 +23,7 @@ div.wrapper.gantt(
         .gantt-workspace(
             tg-gantt-sync-rows
             tg-gantt-panel-resize
+            tg-gantt-tree-reorder
             tg-gantt-bar-resize
             ng-class="{'is-linking-gantt-bars': ctrl.barLinkModeActive, 'is-bar-editing-unlocked': !ctrl.barsLocked}"
             ng-if="!ctrl.loading && !ctrl.loadingError"
@@ -259,6 +260,8 @@ div.wrapper.gantt(
                                     ng-attr-data-gantt-row-id="{{node.rowId}}"
                                 )
                                     span.gantt-col-title(ng-attr-title="{{node.item.subject || node.item.name || '-'}}")
+                                        span.gantt-tree-reorder-handle
+                                            span.gantt-tree-reorder-handle-lines
                                         span.gantt-row-content
                                             span.gantt-row-toggle
                                                 tg-svg.gantt-chevron(ng-if="node.children.length" svg-icon="icon-arrow-down")
@@ -328,6 +331,8 @@ div.wrapper.gantt(
                                             ng-attr-data-gantt-row-id="{{story.rowId}}"
                                         )
                                             span.gantt-col-title(ng-attr-title="{{story.item.subject || story.item.name || '-'}}")
+                                                span.gantt-tree-reorder-handle
+                                                    span.gantt-tree-reorder-handle-lines
                                                 span.gantt-row-content
                                                     span.gantt-row-toggle
                                                         tg-svg.gantt-chevron(ng-if="story.children.length" svg-icon="icon-arrow-down")
@@ -392,6 +397,8 @@ div.wrapper.gantt(
                                                 ng-attr-data-gantt-row-id="{{task.rowId}}"
                                             )
                                                 span.gantt-col-title(ng-attr-title="{{task.item.subject || task.item.name || '-'}}")
+                                                    span.gantt-tree-reorder-handle
+                                                        span.gantt-tree-reorder-handle-lines
                                                     span.gantt-row-content
                                                         span.gantt-row-type-icon(ng-style="task.barColor ? {'color': task.barColor} : null")
                                                             button.gantt-row-type-button(
@@ -459,6 +466,8 @@ div.wrapper.gantt(
                                     ng-attr-data-gantt-row-id="{{node.rowId}}"
                                 )
                                     span.gantt-col-title(ng-attr-title="{{node.item.subject || node.item.name || '-'}}")
+                                        span.gantt-tree-reorder-handle
+                                            span.gantt-tree-reorder-handle-lines
                                         span.gantt-row-content
                                             span.gantt-row-toggle
                                                 tg-svg.gantt-chevron(ng-if="node.children.length" svg-icon="icon-arrow-down")
@@ -523,6 +532,8 @@ div.wrapper.gantt(
                                         ng-attr-data-gantt-row-id="{{task.rowId}}"
                                     )
                                         span.gantt-col-title(ng-attr-title="{{task.item.subject || task.item.name || '-'}}")
+                                            span.gantt-tree-reorder-handle
+                                                span.gantt-tree-reorder-handle-lines
                                             span.gantt-row-content
                                                 span.gantt-row-type-icon(ng-style="task.barColor ? {'color': task.barColor} : null")
                                                     button.gantt-row-type-button(
@@ -583,6 +594,8 @@ div.wrapper.gantt(
                                 ng-attr-data-gantt-row-id="{{node.rowId}}"
                             )
                                 span.gantt-col-title(ng-attr-title="{{node.item.subject || node.item.name || '-'}}")
+                                    span.gantt-tree-reorder-handle
+                                        span.gantt-tree-reorder-handle-lines
                                     span.gantt-row-content
                                         span.gantt-row-type-icon(ng-style="node.barColor ? {'color': node.barColor} : null")
                                             button.gantt-row-type-button(
