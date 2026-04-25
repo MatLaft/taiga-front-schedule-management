@@ -81,9 +81,14 @@
         display: flex;
     }
 
+    .gantt-toolbar-critical-path {
+        display: flex;
+    }
+
     .gantt-toolbar-history-button,
     .gantt-toolbar-color-picker-button,
     .gantt-toolbar-link-button,
+    .gantt-toolbar-critical-path-button,
     .gantt-toolbar-zoom-button,
     .gantt-toolbar-lock-button {
         align-items: center;
@@ -143,6 +148,11 @@
         color: $color-link-primary;
     }
 
+    .gantt-toolbar-critical-path-button.is-active {
+        background: rgba($color-link-primary, .12);
+        color: $color-link-primary;
+    }
+
     .gantt-toolbar-color-picker-button:focus,
     .gantt-toolbar-link-button:focus,
     .gantt-toolbar-link-button:focus-visible,
@@ -169,6 +179,13 @@
         border-color: transparent;
         box-shadow: none;
         outline: 0;
+    }
+
+    .gantt-toolbar-critical-path-button {
+        svg {
+            height: 1.35rem;
+            width: 1.35rem;
+        }
     }
 
     .gantt-toolbar-zoom-menu {
@@ -463,6 +480,10 @@
             position: absolute;
             z-index: 0;
         }
+    }
+
+    .gantt-tree-row.is-critical-path-muted {
+        opacity: .22;
     }
 
     .gantt-row-epic {
@@ -979,6 +1000,15 @@
         opacity: 1;
     }
 
+    .gantt-link-path.is-critical-path-muted,
+    .gantt-link-arrowhead.is-critical-path-muted {
+        opacity: .18;
+    }
+
+    .gantt-link-source-cap.is-critical-path-muted.is-visible {
+        opacity: .18;
+    }
+
     .gantt-link-path.gantt-link-preview,
     .gantt-link-arrowhead.gantt-link-preview {
         opacity: .22;
@@ -1007,6 +1037,10 @@
         &:focus-visible {
             outline: none;
         }
+    }
+
+    .gantt-bar.is-critical-path-muted {
+        opacity: .16;
     }
 
     .gantt-bar:not([data-row-index]):not(.gantt-bar-create-preview) {

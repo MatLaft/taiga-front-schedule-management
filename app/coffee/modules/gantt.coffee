@@ -77,6 +77,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @realtimeSyncInProgress = false
         @realtimeSyncPending = false
         @realtimeSyncDebounced = null
+        @criticalPathLogged = false
+        @criticalPathHighlightActive = false
+        @criticalPathState = @_emptyCriticalPathState()
 
         @documentClickHandler = (event) => @onDocumentClick(event)
         angular.element(document).on("click", @documentClickHandler)
@@ -108,7 +111,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @_restoreZoomOptionFromCookie()
         @_restoreZoomSliderStateFromCookie()
         @_syncTimelineWidthSliderValue()
-        return @load()
+        return @load().then =>
+            @_logCriticalPathToConsole()
+            return
 
     initializeSubscription: ->
         return if @subscriptionsInitialized
@@ -199,6 +204,257 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @tree = @_buildTree(@sourceEpics, @sourceUserstories, @sourceTasks)
         @_refreshComputedData()
 
+    _calculateCriticalPathRows: ->
+        nodesByRowId = {}
+        edgeKeys = {}
+        linkedRowIds = {}
+
+        _.each(@rowNodesById or {}, (row, rowId) =>
+            return if !row?.item?
+            return if !row.startMoment? or !row.dueMoment?
+
+            durationDays = row.dueMoment.diff(row.startMoment, "days") + 1
+            durationDays = Math.max(1, durationDays)
+
+            nodesByRowId[rowId] = {
+                rowId: rowId
+                row: row
+                durationDays: durationDays
+                incoming: []
+                outgoing: []
+            }
+        )
+
+        _.each(@sourceScheduleDependencies or [], (dependency) =>
+            sourceScheduleId = @_normalizeId(dependency?.from_schedule)
+            targetScheduleId = @_normalizeId(dependency?.to_schedule)
+            return if !sourceScheduleId? or !targetScheduleId?
+
+            sourceRowId = @rowIdByScheduleId["#{sourceScheduleId}"]
+            targetRowId = @rowIdByScheduleId["#{targetScheduleId}"]
+            return if !sourceRowId? or !targetRowId?
+            return if sourceRowId == targetRowId
+
+            sourceNode = nodesByRowId[sourceRowId]
+            targetNode = nodesByRowId[targetRowId]
+            return if !sourceNode? or !targetNode?
+
+            edgeKey = "#{sourceRowId}|#{targetRowId}"
+            return if edgeKeys[edgeKey]
+
+            edgeKeys[edgeKey] = true
+            sourceNode.outgoing.push(targetRowId)
+            targetNode.incoming.push(sourceRowId)
+            linkedRowIds[sourceRowId] = true
+            linkedRowIds[targetRowId] = true
+        )
+
+        graphRowIds = _.keys(linkedRowIds)
+        return [] if !graphRowIds.length
+
+        indegreeByRowId = {}
+        _.each(graphRowIds, (rowId) =>
+            indegreeByRowId[rowId] = (nodesByRowId[rowId]?.incoming.length) or 0
+        )
+
+        queue = _.sortBy(_.filter(graphRowIds, (rowId) ->
+            return indegreeByRowId[rowId] == 0
+        ), (rowId) ->
+            return nodesByRowId[rowId]?.row?.startMoment?.valueOf() or 0
+        )
+        topologicalOrder = []
+
+        while queue.length
+            currentRowId = queue.shift()
+            topologicalOrder.push(currentRowId)
+
+            _.each(nodesByRowId[currentRowId]?.outgoing or [], (nextRowId) =>
+                return if !indegreeByRowId[nextRowId]?
+
+                indegreeByRowId[nextRowId] = Math.max(0, indegreeByRowId[nextRowId] - 1)
+                return if indegreeByRowId[nextRowId] != 0
+
+                queue.push(nextRowId)
+                queue = _.sortBy(queue, (rowId) ->
+                    return nodesByRowId[rowId]?.row?.startMoment?.valueOf() or 0
+                )
+            )
+
+        return [] if topologicalOrder.length != graphRowIds.length
+
+        bestScoreByRowId = {}
+        bestPrevByRowId = {}
+
+        _.each(topologicalOrder, (rowId) =>
+            node = nodesByRowId[rowId]
+            return if !node?
+
+            bestScore = node.durationDays
+            bestPrev = null
+
+            _.each(node.incoming or [], (prevRowId) =>
+                prevNode = nodesByRowId[prevRowId]
+                return if !prevNode?
+
+                prevScore = bestScoreByRowId[prevRowId]
+                return if !prevScore?
+
+                lagDays = node.row.startMoment.diff(prevNode.row.dueMoment, "days") - 1
+                lagDays = Math.max(0, lagDays)
+                candidateScore = prevScore + lagDays + node.durationDays
+
+                if candidateScore > bestScore
+                    bestScore = candidateScore
+                    bestPrev = prevRowId
+            )
+
+            bestScoreByRowId[rowId] = bestScore
+            bestPrevByRowId[rowId] = bestPrev
+        )
+
+        endRowId = null
+        endScore = null
+
+        _.each(topologicalOrder, (rowId) =>
+            score = bestScoreByRowId[rowId]
+            return if !score?
+
+            dueValue = nodesByRowId[rowId]?.row?.dueMoment?.valueOf() or 0
+            currentEndDueValue = nodesByRowId[endRowId]?.row?.dueMoment?.valueOf() or 0
+
+            shouldReplace = false
+            shouldReplace = true if endScore == null or score > endScore
+            shouldReplace = true if !shouldReplace and score == endScore and dueValue > currentEndDueValue
+
+            if shouldReplace
+                endScore = score
+                endRowId = rowId
+        )
+
+        return [] if !endRowId?
+
+        criticalPathRowIds = []
+        cursorRowId = endRowId
+
+        while cursorRowId?
+            criticalPathRowIds.push(cursorRowId)
+            cursorRowId = bestPrevByRowId[cursorRowId]
+
+        criticalPathRowIds.reverse()
+
+        return _.compact(_.map(criticalPathRowIds, (rowId) ->
+            return nodesByRowId[rowId]?.row
+        ))
+
+    _emptyCriticalPathState: ->
+        return {
+            rows: []
+            rowIds: {}
+            linkPairKeys: {}
+        }
+
+    _refreshCriticalPathState: ->
+        criticalPathRows = @_calculateCriticalPathRows()
+        state = @_emptyCriticalPathState()
+
+        previousRowId = null
+
+        _.each(criticalPathRows, (row) ->
+            rowId = row?.rowId
+            return if !rowId?
+
+            state.rows.push(row)
+            state.rowIds[rowId] = true
+
+            if previousRowId?
+                state.linkPairKeys["#{previousRowId}|#{rowId}"] = true
+
+            previousRowId = rowId
+        )
+
+        @criticalPathState = state
+        @criticalPathHighlightActive = false if @criticalPathHighlightActive and !state.rows.length
+
+    hasCriticalPath: ->
+        return (@criticalPathState?.rows?.length or 0) > 0
+
+    toggleCriticalPathHighlight: (event) ->
+        @stopToolbarMenuEvent(event)
+        @_refreshCriticalPathState()
+        return if (@criticalPathState?.rows?.length or 0) <= 0
+        @criticalPathHighlightActive = !@criticalPathHighlightActive
+
+    isCriticalPathMuted: (rowId) ->
+        return false if !@criticalPathHighlightActive
+        return false if (@criticalPathState?.rows?.length or 0) <= 0
+        return true if !rowId?
+        return !@criticalPathState?.rowIds?["#{rowId}"]
+
+    isCriticalPathLinkMuted: (link) ->
+        return false if !@criticalPathHighlightActive
+        return false if (@criticalPathState?.rows?.length or 0) <= 0
+
+        sourceRowId = link?.sourceRowId
+        targetRowId = link?.targetRowId
+        return true if !sourceRowId? or !targetRowId?
+
+        pairKey = "#{sourceRowId}|#{targetRowId}"
+        return !@criticalPathState?.linkPairKeys?[pairKey]
+
+    _logCriticalPathToConsole: ->
+        return if @criticalPathLogged
+        @criticalPathLogged = true
+
+        return if typeof console == "undefined"
+
+        criticalPathRows = @criticalPathState?.rows or []
+
+        if !criticalPathRows.length
+            console.info("[Gantt] Caminho crítico: nenhum caminho válido encontrado com links e datas.")
+            return
+
+        console.log("[Gantt] Caminho crítico (ordem):")
+        _.each(criticalPathRows, (row, index) =>
+            treeLabel = @_buildCriticalPathTreeLabel(row)
+            console.log("#{index + 1}. #{treeLabel}")
+        )
+
+    _buildCriticalPathTreeLabel: (row) ->
+        return "- -> - -> -" if !row?
+
+        epicTitle = null
+        storyTitle = null
+        taskTitle = null
+
+        if row.type == "epic"
+            epicTitle = @_itemTitle(row.item)
+        else if row.type == "story"
+            storyTitle = @_itemTitle(row.item)
+
+            epicId = @_normalizeId(row.epicId)
+            if epicId?
+                epicRow = @rowNodesById["epic-#{epicId}"]
+                epicTitle = @_itemTitle(epicRow?.item)
+        else if row.type == "task"
+            taskTitle = @_itemTitle(row.item)
+
+            storyId = @_normalizeId(@_extractStoryId(row.item))
+            storyRow = null
+            if storyId?
+                storyRow = @rowNodesById["story-#{storyId}"]
+                storyTitle = @_itemTitle(storyRow?.item)
+
+            epicId = @_normalizeId(row.epicId)
+            epicId = @_normalizeId(storyRow?.epicId) if !epicId? and storyRow?
+            if epicId?
+                epicRow = @rowNodesById["epic-#{epicId}"]
+                epicTitle = @_itemTitle(epicRow?.item)
+
+        epicTitle = epicTitle or "-"
+        storyTitle = storyTitle or "-"
+        taskTitle = taskTitle or "-"
+        return "#{epicTitle} -> #{storyTitle} -> #{taskTitle}"
+
     _refreshComputedData: ->
         _.each(@tree, (node) =>
             @_computeNodeProgress(node)
@@ -214,6 +470,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @ganttBars = @_buildBars(flatRows, @timeline)
         @_syncBarLinksFromDependencies()
         @_pruneBarLinks()
+        @_refreshCriticalPathState()
 
     _refreshTimelineLayoutForCurrentTree: ->
         flatRows = @_flattenRows(@tree)
@@ -703,6 +960,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         }).then (dependency) =>
             @sourceScheduleDependencies.push(dependency)
             @_syncBarLinksFromDependencies()
+            @_refreshCriticalPathState()
             @scope.$evalAsync()
             @confirm.notify("success") if notify
             return dependency
@@ -721,6 +979,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             @barLinks = _.filter(@barLinks or [], (link) ->
                 return !(link?.sourceRowId == sourceRowId and link?.targetRowId == targetRowId)
             )
+            @_refreshCriticalPathState()
             @scope.$evalAsync()
             @confirm.notify("success") if notify
             return @q.when()
@@ -733,6 +992,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 return @_normalizeId(candidate?.id) != dependencyId
             )
             @_syncBarLinksFromDependencies()
+            @_refreshCriticalPathState()
             @scope.$evalAsync()
             @confirm.notify("success") if notify
             return
