@@ -106,6 +106,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @loadProject()
         @initializeSubscription()
         @_restoreZoomOptionFromCookie()
+        @_restoreZoomSliderStateFromCookie()
         @_syncTimelineWidthSliderValue()
         return @load()
 
@@ -976,6 +977,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     _getZoomCookieName: ->
         return buildGanttCookieName("layout_zoom", @scope)
 
+    _getZoomSliderCookieName: ->
+        return buildGanttCookieName("layout_zoom_slider", @scope)
+
     _persistZoomOption: ->
         cookieName = @_getZoomCookieName()
         writeGanttCookie(cookieName, @selectedZoomOption)
@@ -986,6 +990,36 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         validOptions = ["daily", "weekly", "monthly"]
         return if validOptions.indexOf(option) == -1
         @selectedZoomOption = option
+
+    _persistZoomSliderState: ->
+        cookieName = @_getZoomSliderCookieName()
+        weeklyBounds = @_getScaleWidthBounds("weekly")
+        monthlyBounds = @_getScaleWidthBounds("monthly")
+
+        zoomSliderState = {
+            weekly: @_clampScaleWidthValue(@weekWidthRem, weeklyBounds)
+            monthly: @_clampScaleWidthValue(@monthDayWidthRem, monthlyBounds)
+        }
+
+        writeGanttJsonCookie(cookieName, zoomSliderState)
+
+    _restoreZoomSliderStateFromCookie: ->
+        cookieName = @_getZoomSliderCookieName()
+        zoomSliderState = readGanttJsonCookie(cookieName)
+        return if !_.isObject(zoomSliderState)
+
+        weeklyBounds = @_getScaleWidthBounds("weekly")
+        monthlyBounds = @_getScaleWidthBounds("monthly")
+
+        if zoomSliderState.weekly?
+            parsedWeekly = parseFloat(zoomSliderState.weekly)
+            if !isNaN(parsedWeekly)
+                @weekWidthRem = @_clampScaleWidthValue(parsedWeekly, weeklyBounds)
+
+        if zoomSliderState.monthly?
+            parsedMonthly = parseFloat(zoomSliderState.monthly)
+            if !isNaN(parsedMonthly)
+                @monthDayWidthRem = @_clampScaleWidthValue(parsedMonthly, monthlyBounds)
 
     selectZoomOption: (option, event) ->
         @stopToolbarMenuEvent(event)
@@ -1098,6 +1132,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return if currentWidthValue? and Math.abs(nextWidthValue - currentWidthValue) < 0.0001
 
         @_setCurrentScaleWidthValue(scale, nextWidthValue)
+        @_persistZoomSliderState()
         @_refreshTimelineLayoutForCurrentTree()
         @scope.$broadcast("tg:gantt-sync-rows-now")
         @scope.$evalAsync()
