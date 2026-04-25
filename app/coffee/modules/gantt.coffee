@@ -207,12 +207,12 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         nodesByNodeId = {}
         edges = []
         edgeKeys = {}
-        linkedRowIds = {}
         dummyStartNodeId = "__critical-path-start__"
         dummyEndNodeId = "__critical-path-end__"
 
         _.each(@rowNodesById or {}, (row, rowId) =>
             return if !row?.item?
+            return if (row.children?.length or 0) > 0
             return if !row.startMoment? or !row.dueMoment?
 
             durationDays = row.dueMoment.diff(row.startMoment, "days") + 1
@@ -273,11 +273,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             # Critical path now considers only activity duration weights.
             # Dependency lag is treated as zero.
             addEdge(sourceRowId, targetRowId, 0)
-            linkedRowIds[sourceRowId] = true
-            linkedRowIds[targetRowId] = true
         )
 
-        graphRowIds = _.keys(linkedRowIds)
+        graphRowIds = _.keys(nodesByNodeId)
         return state if !graphRowIds.length
 
         nodesByNodeId[dummyStartNodeId] = {
@@ -478,6 +476,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return null if !rowId?
         return null if !@criticalPathHighlightActive
         return null if (@criticalPathState?.rows?.length or 0) <= 0
+        return null if (@rowNodesById?[rowId]?.children?.length or 0) > 0
         return null if @isCriticalPathRow(rowId)
 
         totalSlackDays = @getCriticalPathTotalSlackDays(rowId)
