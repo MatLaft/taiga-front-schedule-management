@@ -122,6 +122,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             "changes.project.#{@scope.projectId}.epics"
             "changes.project.#{@scope.projectId}.userstories"
             "changes.project.#{@scope.projectId}.tasks"
+            "changes.project.#{@scope.projectId}.schedule"
         ]
 
         _.each(routingKeys, (routingKey) =>
