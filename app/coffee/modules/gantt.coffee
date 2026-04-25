@@ -3220,6 +3220,10 @@ GanttTreeReorderDirective = ($document) ->
                 return node if node.classList?.contains("gantt-tree-reorder-handle")
             return null
 
+        findChevronFromRow = (row) ->
+            return null if !row?
+            return row.querySelector(".gantt-row-toggle .gantt-chevron")
+
         isEventOnReorderHandle = (event, row = null) ->
             return false if !event?
             row = getClosestTreeRow(event.target) if !row?
@@ -3228,6 +3232,18 @@ GanttTreeReorderDirective = ($document) ->
             rowHandle = getRowHandle(row)
             return false if !rowHandle? or !rowHandle.offsetParent?
             return !!findHandleFromTarget(event.target, row)
+
+        isBeforeChevronToggleArea = (event, row) ->
+            return false if !event? or !row?
+            return false if !row.classList?.contains("is-collapsible")
+
+            chevron = findChevronFromRow(row)
+            return false if !chevron?
+
+            chevronRect = chevron.getBoundingClientRect()
+            return false if !chevronRect? or chevronRect.width <= 0
+
+            return event.clientX < chevronRect.left
 
         setHandleHoverState = (isActive) ->
             leftPanel.classList.toggle(HANDLE_HOVER_CLASS, !!isActive)
@@ -3386,6 +3402,19 @@ GanttTreeReorderDirective = ($document) ->
             event.preventDefault()
             event.stopPropagation()
 
+        onTreeRowClick = (event) ->
+            row = getClosestTreeRow(event.target)
+            return if !row?
+
+            if isEventOnReorderHandle(event, row)
+                event.preventDefault()
+                event.stopPropagation()
+                return
+
+            return if !isBeforeChevronToggleArea(event, row)
+            event.preventDefault()
+            event.stopPropagation()
+
         onTreeRowMouseLeave = ->
             return if active?
             setHandleHoverState(false)
@@ -3409,11 +3438,13 @@ GanttTreeReorderDirective = ($document) ->
 
         leftPanel.addEventListener("mousemove", onTreeRowHoverMouseMove)
         leftPanel.addEventListener("mousedown", onTreeRowMouseDown)
+        leftPanel.addEventListener("click", onTreeRowClick, true)
         leftPanel.addEventListener("mouseleave", onTreeRowMouseLeave)
 
         $scope.$on "$destroy", ->
             leftPanel.removeEventListener("mousemove", onTreeRowHoverMouseMove)
             leftPanel.removeEventListener("mousedown", onTreeRowMouseDown)
+            leftPanel.removeEventListener("click", onTreeRowClick, true)
             leftPanel.removeEventListener("mouseleave", onTreeRowMouseLeave)
             stopTreeRowDrag()
             setHandleHoverState(false)
