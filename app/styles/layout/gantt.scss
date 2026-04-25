@@ -1175,6 +1175,32 @@
         margin-top: .25rem;
     }
 
+    .gantt-bar-slack-tooltip {
+        background: $color-white;
+        border: 1px solid $color-gray300;
+        border-radius: 4px;
+        box-shadow: 4px 4px 8px rgba($color-black, .12);
+        color: $color-gray800;
+        display: none;
+        font-size: .875rem;
+        font-weight: 500;
+        line-height: 1.35;
+        max-width: 16rem;
+        opacity: 0;
+        padding: .5rem .75rem;
+        pointer-events: none;
+        position: absolute;
+        text-align: center;
+        transition: opacity .1s ease;
+        white-space: nowrap;
+        z-index: 4;
+    }
+
+    .gantt-bar-slack-tooltip.is-visible {
+        display: block;
+        opacity: 1;
+    }
+
     .gantt-bar.is-dragging {
         opacity: .45;
     }

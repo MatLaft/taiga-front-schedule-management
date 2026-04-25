@@ -111,9 +111,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @_restoreZoomOptionFromCookie()
         @_restoreZoomSliderStateFromCookie()
         @_syncTimelineWidthSliderValue()
-        return @load().then =>
-            @_logCriticalPathToConsole()
-            return
+        return @load()
 
     initializeSubscription: ->
         return if @subscriptionsInitialized
@@ -204,10 +202,14 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @tree = @_buildTree(@sourceEpics, @sourceUserstories, @sourceTasks)
         @_refreshComputedData()
 
-    _calculateCriticalPathRows: ->
-        nodesByRowId = {}
+    _calculateCriticalPathState: ->
+        state = @_emptyCriticalPathState()
+        nodesByNodeId = {}
+        edges = []
         edgeKeys = {}
         linkedRowIds = {}
+        dummyStartNodeId = "__critical-path-start__"
+        dummyEndNodeId = "__critical-path-end__"
 
         _.each(@rowNodesById or {}, (row, rowId) =>
             return if !row?.item?
@@ -216,14 +218,39 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             durationDays = row.dueMoment.diff(row.startMoment, "days") + 1
             durationDays = Math.max(1, durationDays)
 
-            nodesByRowId[rowId] = {
+            nodesByNodeId[rowId] = {
+                nodeId: rowId
                 rowId: rowId
                 row: row
                 durationDays: durationDays
-                incoming: []
-                outgoing: []
+                isSynthetic: false
+                incomingEdges: []
+                outgoingEdges: []
             }
         )
+
+        addEdge = (sourceNodeId, targetNodeId, lagDays, isSynthetic = false) =>
+            return null if !sourceNodeId? or !targetNodeId?
+            return null if sourceNodeId == targetNodeId
+
+            normalizedLagDays = parseInt(lagDays, 10)
+            normalizedLagDays = 0 if isNaN(normalizedLagDays) or normalizedLagDays < 0
+
+            sourceNode = nodesByNodeId[sourceNodeId]
+            targetNode = nodesByNodeId[targetNodeId]
+            return null if !sourceNode? or !targetNode?
+
+            edge = {
+                sourceNodeId: sourceNodeId
+                targetNodeId: targetNodeId
+                lagDays: normalizedLagDays
+                isSynthetic: !!isSynthetic
+            }
+
+            edges.push(edge)
+            sourceNode.outgoingEdges.push(edge)
+            targetNode.incomingEdges.push(edge)
+            return edge
 
         _.each(@sourceScheduleDependencies or [], (dependency) =>
             sourceScheduleId = @_normalizeId(dependency?.from_schedule)
@@ -235,148 +262,237 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             return if !sourceRowId? or !targetRowId?
             return if sourceRowId == targetRowId
 
-            sourceNode = nodesByRowId[sourceRowId]
-            targetNode = nodesByRowId[targetRowId]
+            sourceNode = nodesByNodeId[sourceRowId]
+            targetNode = nodesByNodeId[targetRowId]
             return if !sourceNode? or !targetNode?
 
             edgeKey = "#{sourceRowId}|#{targetRowId}"
             return if edgeKeys[edgeKey]
 
             edgeKeys[edgeKey] = true
-            sourceNode.outgoing.push(targetRowId)
-            targetNode.incoming.push(sourceRowId)
+            # Critical path now considers only activity duration weights.
+            # Dependency lag is treated as zero.
+            addEdge(sourceRowId, targetRowId, 0)
             linkedRowIds[sourceRowId] = true
             linkedRowIds[targetRowId] = true
         )
 
         graphRowIds = _.keys(linkedRowIds)
-        return [] if !graphRowIds.length
+        return state if !graphRowIds.length
+
+        nodesByNodeId[dummyStartNodeId] = {
+            nodeId: dummyStartNodeId
+            rowId: null
+            row: null
+            durationDays: 0
+            isSynthetic: true
+            incomingEdges: []
+            outgoingEdges: []
+        }
+        nodesByNodeId[dummyEndNodeId] = {
+            nodeId: dummyEndNodeId
+            rowId: null
+            row: null
+            durationDays: 0
+            isSynthetic: true
+            incomingEdges: []
+            outgoingEdges: []
+        }
+
+        _.each(graphRowIds, (rowId) =>
+            node = nodesByNodeId[rowId]
+            return if !node?.row?
+
+            if (node.incomingEdges?.length or 0) == 0
+                addEdge(dummyStartNodeId, rowId, 0, true)
+
+            if (node.outgoingEdges?.length or 0) == 0
+                addEdge(rowId, dummyEndNodeId, 0, true)
+        )
+
+        activeNodeIds = graphRowIds.slice(0)
+        activeNodeIds.push(dummyStartNodeId)
+        activeNodeIds.push(dummyEndNodeId)
+
+        topologicalSortKey = (nodeId) ->
+            return Number.NEGATIVE_INFINITY if nodeId == dummyStartNodeId
+            return Number.POSITIVE_INFINITY if nodeId == dummyEndNodeId
+            return nodesByNodeId[nodeId]?.row?.startMoment?.valueOf() or 0
 
         indegreeByRowId = {}
-        _.each(graphRowIds, (rowId) =>
-            indegreeByRowId[rowId] = (nodesByRowId[rowId]?.incoming.length) or 0
+        _.each(activeNodeIds, (nodeId) =>
+            indegreeByRowId[nodeId] = (nodesByNodeId[nodeId]?.incomingEdges.length) or 0
         )
 
-        queue = _.sortBy(_.filter(graphRowIds, (rowId) ->
-            return indegreeByRowId[rowId] == 0
-        ), (rowId) ->
-            return nodesByRowId[rowId]?.row?.startMoment?.valueOf() or 0
-        )
+        queue = _.sortBy(_.filter(activeNodeIds, (nodeId) ->
+            return indegreeByRowId[nodeId] == 0
+        ), topologicalSortKey)
         topologicalOrder = []
 
         while queue.length
-            currentRowId = queue.shift()
-            topologicalOrder.push(currentRowId)
+            currentNodeId = queue.shift()
+            topologicalOrder.push(currentNodeId)
 
-            _.each(nodesByRowId[currentRowId]?.outgoing or [], (nextRowId) =>
-                return if !indegreeByRowId[nextRowId]?
+            _.each(nodesByNodeId[currentNodeId]?.outgoingEdges or [], (edge) =>
+                nextNodeId = edge.targetNodeId
+                return if !indegreeByRowId[nextNodeId]?
 
-                indegreeByRowId[nextRowId] = Math.max(0, indegreeByRowId[nextRowId] - 1)
-                return if indegreeByRowId[nextRowId] != 0
+                indegreeByRowId[nextNodeId] = Math.max(0, indegreeByRowId[nextNodeId] - 1)
+                return if indegreeByRowId[nextNodeId] != 0
 
-                queue.push(nextRowId)
-                queue = _.sortBy(queue, (rowId) ->
-                    return nodesByRowId[rowId]?.row?.startMoment?.valueOf() or 0
-                )
+                queue.push(nextNodeId)
+                queue = _.sortBy(queue, topologicalSortKey)
             )
 
-        return [] if topologicalOrder.length != graphRowIds.length
+        return state if topologicalOrder.length != activeNodeIds.length
 
-        bestScoreByRowId = {}
-        bestPrevByRowId = {}
-
-        _.each(topologicalOrder, (rowId) =>
-            node = nodesByRowId[rowId]
+        headByNodeId = {}
+        _.each(topologicalOrder, (nodeId) =>
+            node = nodesByNodeId[nodeId]
             return if !node?
 
-            bestScore = node.durationDays
-            bestPrev = null
-
-            _.each(node.incoming or [], (prevRowId) =>
-                prevNode = nodesByRowId[prevRowId]
-                return if !prevNode?
-
-                prevScore = bestScoreByRowId[prevRowId]
-                return if !prevScore?
-
-                lagDays = node.row.startMoment.diff(prevNode.row.dueMoment, "days") - 1
-                lagDays = Math.max(0, lagDays)
-                candidateScore = prevScore + lagDays + node.durationDays
-
-                if candidateScore > bestScore
-                    bestScore = candidateScore
-                    bestPrev = prevRowId
+            bestIncomingScore = 0
+            _.each(node.incomingEdges or [], (edge) =>
+                previousHead = headByNodeId[edge.sourceNodeId]
+                return if previousHead == null
+                candidate = previousHead + edge.lagDays
+                bestIncomingScore = Math.max(bestIncomingScore, candidate)
             )
 
-            bestScoreByRowId[rowId] = bestScore
-            bestPrevByRowId[rowId] = bestPrev
+            headByNodeId[nodeId] = node.durationDays + bestIncomingScore
         )
 
-        endRowId = null
-        endScore = null
+        tailByNodeId = {}
+        reverseTopologicalOrder = topologicalOrder.slice(0).reverse()
+        _.each(reverseTopologicalOrder, (nodeId) =>
+            node = nodesByNodeId[nodeId]
+            return if !node?
 
-        _.each(topologicalOrder, (rowId) =>
-            score = bestScoreByRowId[rowId]
-            return if !score?
+            bestOutgoingScore = 0
+            _.each(node.outgoingEdges or [], (edge) =>
+                targetTail = tailByNodeId[edge.targetNodeId]
+                return if targetTail == null
+                candidate = edge.lagDays + targetTail
+                bestOutgoingScore = Math.max(bestOutgoingScore, candidate)
+            )
 
-            dueValue = nodesByRowId[rowId]?.row?.dueMoment?.valueOf() or 0
-            currentEndDueValue = nodesByRowId[endRowId]?.row?.dueMoment?.valueOf() or 0
-
-            shouldReplace = false
-            shouldReplace = true if endScore == null or score > endScore
-            shouldReplace = true if !shouldReplace and score == endScore and dueValue > currentEndDueValue
-
-            if shouldReplace
-                endScore = score
-                endRowId = rowId
+            tailByNodeId[nodeId] = node.durationDays + bestOutgoingScore
         )
 
-        return [] if !endRowId?
+        projectDuration = headByNodeId[dummyEndNodeId] or 0
+        return state if projectDuration <= 0
+        state.projectDurationDays = projectDuration
 
-        criticalPathRowIds = []
-        cursorRowId = endRowId
+        scoreEpsilon = 0.000001
+        isCriticalScore = (value) ->
+            return Math.abs(value - projectDuration) <= scoreEpsilon
 
-        while cursorRowId?
-            criticalPathRowIds.push(cursorRowId)
-            cursorRowId = bestPrevByRowId[cursorRowId]
+        realRowTopologicalOrder = _.filter(topologicalOrder, (nodeId) ->
+            return nodeId != dummyStartNodeId and nodeId != dummyEndNodeId
+        )
 
-        criticalPathRowIds.reverse()
+        _.each(realRowTopologicalOrder, (rowId) =>
+            node = nodesByNodeId[rowId]
+            return if !node? or !node.row?
 
-        return _.compact(_.map(criticalPathRowIds, (rowId) ->
-            return nodesByRowId[rowId]?.row
-        ))
+            headScore = headByNodeId[rowId] or 0
+            tailScore = tailByNodeId[rowId] or 0
+            pathThroughNode = headScore + tailScore - node.durationDays
+            totalSlackDays = Math.max(0, projectDuration - pathThroughNode)
+            earlyStartDays = Math.max(0, headScore - node.durationDays)
+            earlyFinishDays = headScore
+            lateStartDays = Math.max(0, projectDuration - tailScore)
+            lateFinishDays = lateStartDays + node.durationDays
+
+            state.totalSlackByRowId[rowId] = totalSlackDays
+            state.earlyStartByRowId[rowId] = earlyStartDays
+            state.earlyFinishByRowId[rowId] = earlyFinishDays
+            state.lateStartByRowId[rowId] = lateStartDays
+            state.lateFinishByRowId[rowId] = lateFinishDays
+
+            if isCriticalScore(pathThroughNode)
+                state.rows.push(node.row)
+                state.rowIds[rowId] = true
+        )
+
+        return state if !state.rows.length
+
+        _.each(edges, (edge) =>
+            return if edge.isSynthetic
+
+            sourceHead = headByNodeId[edge.sourceNodeId]
+            targetTail = tailByNodeId[edge.targetNodeId]
+            return if sourceHead == null or targetTail == null
+
+            pathThroughEdge = sourceHead + edge.lagDays + targetTail
+            return if !isCriticalScore(pathThroughEdge)
+
+            sourceRowId = nodesByNodeId[edge.sourceNodeId]?.rowId
+            targetRowId = nodesByNodeId[edge.targetNodeId]?.rowId
+            return if !sourceRowId? or !targetRowId?
+
+            state.linkPairKeys["#{sourceRowId}|#{targetRowId}"] = true
+        )
+
+        return state
 
     _emptyCriticalPathState: ->
         return {
             rows: []
             rowIds: {}
             linkPairKeys: {}
+            totalSlackByRowId: {}
+            earlyStartByRowId: {}
+            earlyFinishByRowId: {}
+            lateStartByRowId: {}
+            lateFinishByRowId: {}
+            projectDurationDays: 0
         }
 
     _refreshCriticalPathState: ->
-        criticalPathRows = @_calculateCriticalPathRows()
-        state = @_emptyCriticalPathState()
-
-        previousRowId = null
-
-        _.each(criticalPathRows, (row) ->
-            rowId = row?.rowId
-            return if !rowId?
-
-            state.rows.push(row)
-            state.rowIds[rowId] = true
-
-            if previousRowId?
-                state.linkPairKeys["#{previousRowId}|#{rowId}"] = true
-
-            previousRowId = rowId
-        )
-
+        state = @_calculateCriticalPathState()
         @criticalPathState = state
         @criticalPathHighlightActive = false if @criticalPathHighlightActive and !state.rows.length
 
+    _translateGanttText: (key, fallback) ->
+        translated = if @translate?.instant? then @translate.instant(key) else null
+        return fallback if !translated? or translated == key
+        return translated
+
     hasCriticalPath: ->
         return (@criticalPathState?.rows?.length or 0) > 0
+
+    isCriticalPathRow: (rowId) ->
+        return false if !rowId?
+        return !!@criticalPathState?.rowIds?["#{rowId}"]
+
+    getCriticalPathTotalSlackDays: (rowId) ->
+        return null if !rowId?
+
+        totalSlackDays = @criticalPathState?.totalSlackByRowId?["#{rowId}"]
+        return null if totalSlackDays == null
+
+        return totalSlackDays
+
+    getCriticalPathSlackTooltipText: (rowId) ->
+        return null if !rowId?
+        return null if !@criticalPathHighlightActive
+        return null if (@criticalPathState?.rows?.length or 0) <= 0
+        return null if @isCriticalPathRow(rowId)
+
+        totalSlackDays = @getCriticalPathTotalSlackDays(rowId)
+        return null if totalSlackDays == null
+
+        normalizedSlackDays = Math.max(0, Math.round(totalSlackDays))
+        return null if normalizedSlackDays <= 0
+
+        label = @_translateGanttText("PROJECT.GANTT.CRITICAL_PATH.SLACK_LABEL", "Slack")
+        dayLabel = if normalizedSlackDays == 1
+            @_translateGanttText("PROJECT.GANTT.CRITICAL_PATH.SLACK_DAY_SINGULAR", "day")
+        else
+            @_translateGanttText("PROJECT.GANTT.CRITICAL_PATH.SLACK_DAY_PLURAL", "days")
+
+        return "#{label}: #{normalizedSlackDays} #{dayLabel}"
 
     toggleCriticalPathHighlight: (event) ->
         @stopToolbarMenuEvent(event)
@@ -3980,6 +4096,9 @@ GanttBarResizeDirective = ($document) ->
         resizePopup.appendChild(resizePopupStart)
         resizePopup.appendChild(resizePopupEnd)
         rightPanel.appendChild(resizePopup)
+        slackTooltip = document.createElement("div")
+        slackTooltip.setAttribute("class", "gantt-bar-slack-tooltip")
+        rightPanel.appendChild(slackTooltip)
 
         getSvgForBar = (bar) ->
             node = bar
@@ -4505,6 +4624,44 @@ GanttBarResizeDirective = ($document) ->
         clearResizePopup = ->
             resizePopup.classList.remove("is-visible")
 
+        clearSlackTooltip = ->
+            slackTooltip.classList.remove("is-visible")
+
+        positionSlackTooltip = (bar, tooltipText) ->
+            return clearSlackTooltip() if !bar? or !tooltipText?
+
+            panelRect = rightPanel.getBoundingClientRect()
+            barRect = bar.getBoundingClientRect()
+            return clearSlackTooltip() if barRect.width <= 0 or barRect.height <= 0
+
+            slackTooltip.textContent = tooltipText
+            slackTooltip.classList.add("is-visible")
+
+            tooltipWidth = slackTooltip.offsetWidth or 0
+            tooltipHeight = slackTooltip.offsetHeight or 0
+            left = barRect.left - panelRect.left + rightPanel.scrollLeft + ((barRect.width - tooltipWidth) / 2)
+            maxLeft = rightPanel.scrollLeft + rightPanel.clientWidth - tooltipWidth - 8
+            left = Math.max(rightPanel.scrollLeft + 8, Math.min(left, maxLeft))
+
+            top = barRect.top - panelRect.top + rightPanel.scrollTop - tooltipHeight - 8
+            if top < rightPanel.scrollTop + 8
+                top = barRect.bottom - panelRect.top + rightPanel.scrollTop + 8
+
+            slackTooltip.style.left = "#{Math.round(left)}px"
+            slackTooltip.style.top = "#{Math.round(top)}px"
+
+        updateSlackTooltipForBar = (bar) ->
+            return clearSlackTooltip() if !bar?
+            return clearSlackTooltip() if bar.classList.contains("is-hidden")
+
+            rowId = bar.getAttribute("data-gantt-row-id")
+            return clearSlackTooltip() if !rowId?
+
+            tooltipText = $scope.ctrl?.getCriticalPathSlackTooltipText?(rowId)
+            return clearSlackTooltip() if !tooltipText?
+
+            positionSlackTooltip(bar, tooltipText)
+
         formatResizePopupDate = (slotIndex) ->
             timelineStart = $scope.ctrl?.timeline?.start
             return "-" if !timelineStart?
@@ -4804,6 +4961,7 @@ GanttBarResizeDirective = ($document) ->
                 moved: false
             }
 
+            clearSlackTooltip()
             bar.classList.add("is-link-source")
             root.classList.add(LINK_DRAG_CLASS)
             updateLinkDragPreview(event)
@@ -5105,6 +5263,7 @@ GanttBarResizeDirective = ($document) ->
                 startMinLimit: startMinLimit
             }
 
+            clearSlackTooltip()
             clearHover()
             if edge == "move"
                 root.classList.add(MOVE_DRAG_CLASS)
@@ -5158,6 +5317,7 @@ GanttBarResizeDirective = ($document) ->
             endDay = clamp(endDay, startDay, totalDays)
 
             clearHover()
+            clearSlackTooltip()
             root.classList.add(CREATE_DRAG_CLASS)
 
             bar = createPreviewBar(svg, rowId, row, startDay, endDay, rowData.rowIndex, totalDays)
@@ -5190,7 +5350,9 @@ GanttBarResizeDirective = ($document) ->
             return true
 
         onHoverMouseMove = (event) ->
-            return if active? or activeLinkDrag?
+            if active? or activeLinkDrag?
+                clearSlackTooltip()
+                return
 
             hoveredBarElement = getNearestBarElement(event.target)
             if hoveredBarElement? and !hoveredBarElement.classList.contains("is-hidden")
@@ -5199,6 +5361,7 @@ GanttBarResizeDirective = ($document) ->
                 setVisibleLinkSourceCapsForRow(null)
 
             if isBarLinkModeActive()
+                clearSlackTooltip()
                 bar = hoveredBarElement
                 if !bar? or bar.classList.contains("is-hidden")
                     clearLinkHover()
@@ -5210,13 +5373,15 @@ GanttBarResizeDirective = ($document) ->
 
             clearLinkHover()
 
-            if isBarInteractionLocked()
+            bar = hoveredBarElement
+            if !bar? or bar.classList.contains("is-hidden")
+                clearSlackTooltip()
                 clearHover()
                 return
 
-            bar = hoveredBarElement
+            updateSlackTooltipForBar(bar)
 
-            if !bar? or bar.classList.contains("is-hidden")
+            if isBarInteractionLocked()
                 clearHover()
                 return
 
@@ -5267,6 +5432,7 @@ GanttBarResizeDirective = ($document) ->
 
         onMouseLeave = ->
             return if active? or activeLinkDrag?
+            clearSlackTooltip()
             clearHover()
             clearLinkHover()
             setVisibleLinkSourceCapsForRow(null)
@@ -5288,6 +5454,10 @@ GanttBarResizeDirective = ($document) ->
             return if !visibleLinkSourceCapsRowId?
             setVisibleLinkSourceCapsForRow(visibleLinkSourceCapsRowId, true)
         )
+        unwatchCriticalPathHighlight = $scope.$watch("ctrl.criticalPathHighlightActive", (isActive) ->
+            return if isActive
+            clearSlackTooltip()
+        )
 
         rightPanel.addEventListener("mousemove", onHoverMouseMove)
         rightPanel.addEventListener("mousedown", onMouseDown)
@@ -5304,6 +5474,7 @@ GanttBarResizeDirective = ($document) ->
             limitIndicator.remove()
             moveEndLimitIndicator.remove()
             resizePopup.remove()
+            slackTooltip.remove()
             stopDrag()
             stopLinkDrag(null, {cancel: true})
             linkDragPreviewPath?.remove()
@@ -5315,6 +5486,7 @@ GanttBarResizeDirective = ($document) ->
             unwatchBarLock?()
             unwatchBarLinkMode?()
             unwatchBarLinks?()
+            unwatchCriticalPathHighlight?()
 
     return {link: link}
 

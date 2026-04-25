@@ -938,6 +938,11 @@
                 "WEEKLY": "Weekly",
                 "MONTHLY": "Monthly"
             },
+            "CRITICAL_PATH": {
+                "SLACK_LABEL": "Slack",
+                "SLACK_DAY_SINGULAR": "day",
+                "SLACK_DAY_PLURAL": "days"
+            },
             "RESIZE_POPUP": {
                 "START": "Start",
                 "END": "End",

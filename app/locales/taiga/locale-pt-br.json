@@ -938,6 +938,11 @@
                 "WEEKLY": "Semanal",
                 "MONTHLY": "Mensal"
             },
+            "CRITICAL_PATH": {
+                "SLACK_LABEL": "Folga",
+                "SLACK_DAY_SINGULAR": "dia",
+                "SLACK_DAY_PLURAL": "dias"
+            },
             "RESIZE_POPUP": {
                 "START": "Começo",
                 "END": "Fim",
