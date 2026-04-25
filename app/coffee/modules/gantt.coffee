@@ -2763,10 +2763,37 @@ GanttSyncRowsDirective = ->
             return rowIndex + 0.64 if barType == "story"
             return rowIndex + 0.58
 
-        buildPromotedSourceStemPath = (sourceX, sourceY, depth) ->
+        getBarTopAnchorY = (bar, rowIndex) ->
+            shape = bar?.getAttribute("data-shape") or ""
+            barType = bar?.getAttribute("data-bar-type") or ""
+
+            return rowIndex + 0.28 if shape == "rounded"
+            return rowIndex + 0.17 if barType == "epic"
+            return rowIndex + 0.16 if barType == "story"
+            return rowIndex + 0.22
+
+        buildTreeRowOrderById = ->
+            orderById = {}
+            nextIndex = 0
+
+            walk = (node) ->
+                return if !node?.rowId?
+                orderById[node.rowId] = nextIndex
+                nextIndex += 1
+                _.each(node.children or [], (child) ->
+                    walk(child)
+                )
+
+            _.each($scope.ctrl?.tree or [], (rootNode) ->
+                walk(rootNode)
+            )
+
+            return orderById
+
+        buildPromotedSourceStemPath = (sourceX, sourceY, depth, direction = "down") ->
             stemDepth = Math.max(1, depth)
             stemLength = 0.38 + ((stemDepth - 1) * 0.16)
-            stemStartY = sourceY + stemLength
+            stemStartY = if direction == "up" then sourceY - stemLength else sourceY + stemLength
             return "M#{sourceX},#{stemStartY}L#{sourceX},#{sourceY}"
 
         mergePromotedStemWithRoute = (promotedStemPath, routePath) ->
@@ -2905,6 +2932,7 @@ GanttSyncRowsDirective = ->
             svgRect = barsSvg.getBoundingClientRect()
             xScale = svgRect.width / totalDays
             yScale = svgRect.height / Math.max(1, visibleRowsCount)
+            rowOrderById = buildTreeRowOrderById()
 
             hideLink = (linkPath, arrowhead, sourceCap) ->
                 linkPath.classList.add("is-hidden")
@@ -2960,7 +2988,13 @@ GanttSyncRowsDirective = ->
                     targetTipGapY += (2 / yScale)
 
                 sourceX = Math.min(totalDays, sourceEndDay + endpointGap)
-                sourceY = if sourceResolution.depth > 0 then getBarBottomAnchorY(sourceBar, sourceRowIndex) else sourceRowIndex + 0.5
+                sourceOrder = rowOrderById[sourceRowId]
+                targetOrder = rowOrderById[targetRowId]
+                isSourceBelowTarget = _.isNumber(sourceOrder) and _.isNumber(targetOrder) and sourceOrder > targetOrder
+                sourceY = if sourceResolution.depth > 0
+                    if isSourceBelowTarget then getBarTopAnchorY(sourceBar, sourceRowIndex) else getBarBottomAnchorY(sourceBar, sourceRowIndex)
+                else
+                    sourceRowIndex + 0.5
                 targetX = Math.max(0, targetStartDay - 1 - targetEndpointGap)
                 targetY = targetRowIndex + 0.5
                 targetTopOffset = if targetShape == "rounded" then 0.28 else 0.22
@@ -2976,7 +3010,8 @@ GanttSyncRowsDirective = ->
                 linkPathD = linkRoute.path
 
                 if sourceResolution.depth > 0
-                    promotedStemPath = buildPromotedSourceStemPath(sourceX, sourceY, sourceResolution.depth)
+                    stemDirection = if isSourceBelowTarget then "up" else "down"
+                    promotedStemPath = buildPromotedSourceStemPath(sourceX, sourceY, sourceResolution.depth, stemDirection)
                     linkPathD = mergePromotedStemWithRoute(promotedStemPath, linkRoute.path)
 
                 linkPath.setAttribute("d", linkPathD)
@@ -3917,6 +3952,33 @@ GanttBarResizeDirective = ($document) ->
             return rowIndex + 0.64 if barType == "story"
             return rowIndex + 0.58
 
+        getBarTopAnchorY = (bar, rowIndex) ->
+            shape = bar?.getAttribute("data-shape") or ""
+            barType = bar?.getAttribute("data-bar-type") or ""
+
+            return rowIndex + 0.28 if shape == "rounded"
+            return rowIndex + 0.17 if barType == "epic"
+            return rowIndex + 0.16 if barType == "story"
+            return rowIndex + 0.22
+
+        buildTreeRowOrderById = ->
+            orderById = {}
+            nextIndex = 0
+
+            walk = (node) ->
+                return if !node?.rowId?
+                orderById[node.rowId] = nextIndex
+                nextIndex += 1
+                _.each(node.children or [], (child) ->
+                    walk(child)
+                )
+
+            _.each($scope.ctrl?.tree or [], (rootNode) ->
+                walk(rootNode)
+            )
+
+            return orderById
+
         buildPromotedSourceStemPath = (sourceX, sourceY, depth) ->
             stemDepth = Math.max(1, depth)
             stemLength = 0.38 + ((stemDepth - 1) * 0.16)
@@ -3956,6 +4018,7 @@ GanttBarResizeDirective = ($document) ->
             sourceCapHalfHeightY = 4 / yScale
             sourceCapHalfWidthX = 4 / xScale
             incomingSourceRowIds = {}
+            rowOrderById = buildTreeRowOrderById()
 
             _.each($scope.ctrl?.barLinks or [], (link) ->
                 sourceRowId = link?.sourceRowId
@@ -3976,7 +4039,13 @@ GanttBarResizeDirective = ($document) ->
                 return if !isFinite(sourceEndDay) or !isFinite(sourceRowIndex)
 
                 sourceX = Math.min(totalDays, sourceEndDay + endpointGap)
-                sourceY = if sourceResolution.depth > 0 then getBarBottomAnchorY(sourceBar, sourceRowIndex) else sourceRowIndex + 0.5
+                sourceOrder = rowOrderById[sourceRowId]
+                targetOrder = rowOrderById[targetRowId]
+                isSourceBelowTarget = _.isNumber(sourceOrder) and _.isNumber(targetOrder) and sourceOrder > targetOrder
+                sourceY = if sourceResolution.depth > 0
+                    if isSourceBelowTarget then getBarTopAnchorY(sourceBar, sourceRowIndex) else getBarBottomAnchorY(sourceBar, sourceRowIndex)
+                else
+                    sourceRowIndex + 0.5
 
                 hoverSourceCap = document.createElementNS(SVG_NS, "path")
                 hoverSourceCap.setAttribute("class", "gantt-link-source-cap gantt-link-source-cap-hover is-visible")
