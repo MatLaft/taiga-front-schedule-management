@@ -3153,8 +3153,8 @@ GanttTreeReorderDirective = ($document) ->
         return if !leftPanel?
 
         HANDLE_SELECTOR = ".gantt-tree-reorder-handle"
-        DRAG_GHOST_OFFSET_X = 12
-        DRAG_GHOST_OFFSET_Y = 10
+        DRAG_GHOST_POINTER_INSET_X = 10
+        DRAG_GHOST_POINTER_INSET_Y = 17
         HANDLE_HOVER_CLASS = "is-hovering-tree-reorder-handle"
         DRAG_CLASS = "is-dragging-gantt-tree-row"
         active = null
@@ -3253,8 +3253,8 @@ GanttTreeReorderDirective = ($document) ->
             return leftPanel.querySelector(".gantt-tree-row[data-gantt-row-id=\"#{rowId}\"]")
 
         updateDragGhostPosition = (clientX, clientY) ->
-            dragGhost.style.left = "#{Math.round(clientX + DRAG_GHOST_OFFSET_X)}px"
-            dragGhost.style.top = "#{Math.round(clientY + DRAG_GHOST_OFFSET_Y)}px"
+            dragGhost.style.left = "#{Math.round(clientX - DRAG_GHOST_POINTER_INSET_X)}px"
+            dragGhost.style.top = "#{Math.round(clientY - DRAG_GHOST_POINTER_INSET_Y)}px"
 
         resolveDropTarget = (clientY) ->
             return null if !active?
