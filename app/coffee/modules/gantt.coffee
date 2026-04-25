@@ -213,7 +213,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             siblingRowIds: siblingRowIds
         }
 
-    requestGanttRowReorder: (rowId, targetIndex) ->
+    requestGanttRowReorder: (rowId, targetIndex, options = {}) ->
+        notify = options.notify != false
+        skipHistory = !!options.skipHistory
         return @q.when(false) if @treeRowReorderBusy
 
         context = @getGanttRowReorderContext(rowId)
@@ -231,6 +233,13 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         row = @rowNodesById[rowId]
         return @q.when(false) if !row?.item?
+        historyEntry = @_buildRowReorderHistoryEntry(
+            rowId
+            currentIndex
+            numericTargetIndex
+            context.parentRowId
+            context.rowType
+        )
 
         itemToSave = row.item
         if _.isFunction(row.item.realClone)
@@ -242,15 +251,17 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return @repo.save(itemToSave, true, {include_schedule: true}).then =>
             return @_reloadGanttDataSilently().then =>
-                @confirm.notify("success")
+                @_registerBarChangeHistoryEntry(historyEntry) if !skipHistory
+                @confirm.notify("success") if notify
                 return true
             , =>
                 moved = @moveGanttRowWithinSiblings(rowId, numericTargetIndex)
-                @confirm.notify("success")
+                @_registerBarChangeHistoryEntry(historyEntry) if moved and !skipHistory
+                @confirm.notify("success") if moved and notify
                 return moved
         , (errorData) =>
             message = @_extractApiErrorMessage(errorData)
-            @confirm.notify("error", message)
+            @confirm.notify("error", message) if notify
             return @q.reject(errorData)
         .finally =>
             @treeRowReorderBusy = false
@@ -624,12 +635,13 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             return fromScheduleId == sourceScheduleId and toScheduleId == targetScheduleId
         )
 
-    _createBarLinkDependency: (sourceRowId, targetRowId) ->
+    _createBarLinkDependency: (sourceRowId, targetRowId, options = {}) ->
+        notify = options.notify != false
         sourceScheduleId = @_normalizeId(@scheduleIdByRowId[sourceRowId])
         targetScheduleId = @_normalizeId(@scheduleIdByRowId[targetRowId])
 
         if !sourceScheduleId? or !targetScheduleId?
-            @confirm.notify("error")
+            @confirm.notify("error") if notify
             return @q.reject()
 
         return @q.when() if @_hasBarLink(sourceRowId, targetRowId)
@@ -643,16 +655,17 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             @sourceScheduleDependencies.push(dependency)
             @_syncBarLinksFromDependencies()
             @scope.$evalAsync()
-            @confirm.notify("success")
+            @confirm.notify("success") if notify
             return dependency
         , (errorData) =>
             message = @_extractApiErrorMessage(errorData)
-            @confirm.notify("error", message)
+            @confirm.notify("error", message) if notify
             return @q.reject(errorData)
         .finally =>
             @savingBarLinks = false
 
-    _removeBarLinkDependency: (sourceRowId, targetRowId) ->
+    _removeBarLinkDependency: (sourceRowId, targetRowId, options = {}) ->
+        notify = options.notify != false
         dependency = @_findScheduleDependencyForBarLink(sourceRowId, targetRowId)
 
         if !dependency?
@@ -660,6 +673,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 return !(link?.sourceRowId == sourceRowId and link?.targetRowId == targetRowId)
             )
             @scope.$evalAsync()
+            @confirm.notify("success") if notify
             return @q.when()
 
         @savingBarLinks = true
@@ -671,20 +685,33 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             )
             @_syncBarLinksFromDependencies()
             @scope.$evalAsync()
-            @confirm.notify("success")
+            @confirm.notify("success") if notify
             return
         , (errorData) =>
             message = @_extractApiErrorMessage(errorData)
-            @confirm.notify("error", message)
+            @confirm.notify("error", message) if notify
             return @q.reject(errorData)
         .finally =>
             @savingBarLinks = false
 
-    _toggleBarLinkDependency: (sourceRowId, targetRowId) ->
-        if @_hasBarLink(sourceRowId, targetRowId)
-            return @_removeBarLinkDependency(sourceRowId, targetRowId)
+    _setBarLinkDependencyState: (sourceRowId, targetRowId, shouldBeLinked, options = {}) ->
+        if shouldBeLinked
+            return @q.when() if @_hasBarLink(sourceRowId, targetRowId)
+            return @_createBarLinkDependency(sourceRowId, targetRowId, options)
 
-        return @_createBarLinkDependency(sourceRowId, targetRowId)
+        return @q.when() if !@_hasBarLink(sourceRowId, targetRowId)
+        return @_removeBarLinkDependency(sourceRowId, targetRowId, options)
+
+    _toggleBarLinkDependency: (sourceRowId, targetRowId, options = {}) ->
+        skipHistory = !!options.skipHistory
+        notify = options.notify != false
+        previousLinked = @_hasBarLink(sourceRowId, targetRowId)
+        nextLinked = !previousLinked
+        historyEntry = @_buildBarLinkHistoryEntry(sourceRowId, targetRowId, previousLinked, nextLinked)
+
+        return @_setBarLinkDependencyState(sourceRowId, targetRowId, nextLinked, {notify: notify}).then (result) =>
+            @_registerBarChangeHistoryEntry(historyEntry) if !skipHistory
+            return result
 
     toggleGanttBarLink: (sourceRowId, targetRowId) ->
         return false if !@barLinkModeActive
@@ -726,10 +753,14 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     canUndoBarChange: ->
         return false if @barHistoryBusy
+        return false if @treeRowReorderBusy
+        return false if @savingBarLinks
         return @barChangeUndoStack.length > 0
 
     canRedoBarChange: ->
         return false if @barHistoryBusy
+        return false if @treeRowReorderBusy
+        return false if @savingBarLinks
         return @barChangeRedoStack.length > 0
 
     _pushBarChangeHistoryEntry: (stack, entry) ->
@@ -768,6 +799,25 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             nextColor: nextColor or null
         }
 
+    _buildRowReorderHistoryEntry: (rowId, previousIndex, nextIndex, parentRowId = null, rowType = null) ->
+        return {
+            type: "row-reorder"
+            rowId: rowId
+            rowType: rowType or null
+            parentRowId: parentRowId
+            previousIndex: previousIndex
+            nextIndex: nextIndex
+        }
+
+    _buildBarLinkHistoryEntry: (sourceRowId, targetRowId, previousLinked, nextLinked) ->
+        return {
+            type: "link"
+            sourceRowId: sourceRowId
+            targetRowId: targetRowId
+            previousLinked: !!previousLinked
+            nextLinked: !!nextLinked
+        }
+
     _applyColorChangeHistoryEntry: (entry, direction) ->
         return @q.reject() if !entry?
 
@@ -781,9 +831,48 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             allowNull: true
         })
 
+    _applyRowReorderHistoryEntry: (entry, direction) ->
+        return @q.reject() if !entry?
+        return @q.reject() if !entry.rowId?
+
+        context = @getGanttRowReorderContext(entry.rowId)
+        return @q.reject() if !context?
+        return @q.reject() if entry.rowType? and context.rowType? and entry.rowType != context.rowType
+        entryParentRowId = entry.parentRowId or null
+        contextParentRowId = context.parentRowId or null
+        return @q.reject() if entryParentRowId != contextParentRowId
+
+        targetIndex = if direction == "undo" then entry.previousIndex else entry.nextIndex
+        targetIndex = parseInt(targetIndex, 10)
+        return @q.reject() if isNaN(targetIndex)
+
+        maxIndex = Math.max(0, (context.siblingRowIds?.length or 1) - 1)
+        targetIndex = Math.max(0, Math.min(maxIndex, targetIndex))
+
+        currentIndex = parseInt(context.rowIndex, 10)
+        return @q.when() if !isNaN(currentIndex) and currentIndex == targetIndex
+
+        return @requestGanttRowReorder(entry.rowId, targetIndex, {
+            skipHistory: true
+            notify: false
+        }).then (moved) =>
+            return @q.reject() if moved == false
+            return
+
+    _applyBarLinkHistoryEntry: (entry, direction) ->
+        return @q.reject() if !entry?
+        return @q.reject() if !entry.sourceRowId? or !entry.targetRowId?
+
+        shouldBeLinked = if direction == "undo" then !!entry.previousLinked else !!entry.nextLinked
+        return @_setBarLinkDependencyState(entry.sourceRowId, entry.targetRowId, shouldBeLinked, {
+            notify: false
+        })
+
     _applyBarChangeHistoryEntry: (entry, direction) ->
         return @q.reject() if !entry?
         return @_applyColorChangeHistoryEntry(entry, direction) if entry.type == "color"
+        return @_applyRowReorderHistoryEntry(entry, direction) if entry.type == "row-reorder"
+        return @_applyBarLinkHistoryEntry(entry, direction) if entry.type == "link"
 
         targetState = if direction == "undo" then entry.previous else entry.next
         return @q.reject() if !targetState?
