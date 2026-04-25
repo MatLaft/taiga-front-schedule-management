@@ -21,10 +21,11 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         "$tgConfirm",
         "$translate",
         "tgProjectService",
+        "$tgEvents",
         "tgErrorHandlingService"
     ]
 
-    constructor: (@scope, @q, @repo, @confirm, @translate, @projectService, @errorHandlingService) ->
+    constructor: (@scope, @q, @repo, @confirm, @translate, @projectService, @events, @errorHandlingService) ->
         bindMethods(@)
 
         @scope.sectionName = "PROJECT.SECTION.GANTT"
@@ -72,11 +73,16 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @barChangeHistoryLimit = 100
         @barHistoryBusy = false
         @treeRowReorderBusy = false
+        @subscriptionsInitialized = false
+        @realtimeSyncInProgress = false
+        @realtimeSyncPending = false
+        @realtimeSyncDebounced = null
 
         @documentClickHandler = (event) => @onDocumentClick(event)
         angular.element(document).on("click", @documentClickHandler)
         @scope.$on "$destroy", =>
             angular.element(document).off("click", @documentClickHandler)
+            @realtimeSyncDebounced?.cancel?()
 
         promise = @loadInitialData()
         promise.then null, @onInitialDataError.bind(@)
@@ -98,9 +104,50 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     loadInitialData: ->
         @loadProject()
+        @initializeSubscription()
         @_restoreZoomOptionFromCookie()
         @_syncTimelineWidthSliderValue()
         return @load()
+
+    initializeSubscription: ->
+        return if @subscriptionsInitialized
+        return if !@scope.projectId
+        return if !@events?
+
+        @subscriptionsInitialized = true
+        randomTimeout = taiga.randomInt(700, 1000)
+        @realtimeSyncDebounced = _.debounce((=> @_queueRealtimeSyncFromEvents()), randomTimeout)
+
+        routingKeys = [
+            "changes.project.#{@scope.projectId}.epics"
+            "changes.project.#{@scope.projectId}.userstories"
+            "changes.project.#{@scope.projectId}.tasks"
+        ]
+
+        _.each(routingKeys, (routingKey) =>
+            @events.subscribe @scope, routingKey, =>
+                @realtimeSyncDebounced?()
+        )
+
+    _queueRealtimeSyncFromEvents: ->
+        return if !@scope.projectId
+
+        if @realtimeSyncInProgress
+            @realtimeSyncPending = true
+            return
+
+        @realtimeSyncInProgress = true
+
+        return @_reloadGanttDataSilently().then =>
+            return
+        , =>
+            return
+        .finally =>
+            @realtimeSyncInProgress = false
+
+            if @realtimeSyncPending
+                @realtimeSyncPending = false
+                _.defer(=> @_queueRealtimeSyncFromEvents())
 
     load: ->
         return @q.when() if !@scope.projectId
