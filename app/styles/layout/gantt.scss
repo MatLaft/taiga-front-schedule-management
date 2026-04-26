@@ -153,9 +153,15 @@
         color: $color-link-primary;
     }
 
-    .gantt-toolbar-color-picker-button:focus,
+    .gantt-toolbar-zoom-button:focus,
+    .gantt-toolbar-zoom-button:focus-visible,
+    .gantt-toolbar-critical-path-button:focus,
+    .gantt-toolbar-critical-path-button:focus-visible,
+    .gantt-toolbar-lock-button:focus,
+    .gantt-toolbar-lock-button:focus-visible,
     .gantt-toolbar-link-button:focus,
     .gantt-toolbar-link-button:focus-visible,
+    .gantt-toolbar-color-picker-button:focus,
     .gantt-toolbar-color-picker-button:focus-visible {
         border-color: transparent;
         box-shadow: none;
@@ -174,12 +180,6 @@
         color: $color-link-primary;
     }
 
-    .gantt-toolbar-lock-button:focus,
-    .gantt-toolbar-lock-button:focus-visible {
-        border-color: transparent;
-        box-shadow: none;
-        outline: 0;
-    }
 
     .gantt-toolbar-critical-path-button {
         svg {
