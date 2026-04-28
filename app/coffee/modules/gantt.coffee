@@ -1213,7 +1213,303 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 start: nextStart
                 due: nextDue
             }
+            stateChanges: null
         }
+
+    _getScheduleDependencyRowId: (dependency, direction) ->
+        return null if !dependency?
+
+        scheduleKey = if direction == "target" then "to_schedule" else "from_schedule"
+        entityTypeKey = if direction == "target" then "to_entity_type" else "from_entity_type"
+        entityIdKey = if direction == "target" then "to_entity_id" else "from_entity_id"
+
+        scheduleId = @_normalizeId(dependency[scheduleKey])
+        if scheduleId?
+            rowId = @rowIdByScheduleId["#{scheduleId}"]
+            return rowId if rowId?
+
+        return @_rowIdFromScheduleEntity(
+            dependency[entityTypeKey]
+            dependency[entityIdKey]
+        )
+
+    _getDependencyTargetRowIds: (sourceRowId) ->
+        return [] if !sourceRowId?
+
+        targetRowIds = []
+        seenTargetRowIds = {}
+
+        _.each(@sourceScheduleDependencies or [], (dependency) =>
+            dependencySourceRowId = @_getScheduleDependencyRowId(dependency, "source")
+            return if dependencySourceRowId != sourceRowId
+
+            dependencyTargetRowId = @_getScheduleDependencyRowId(dependency, "target")
+            return if !dependencyTargetRowId? or dependencyTargetRowId == sourceRowId
+            return if seenTargetRowIds[dependencyTargetRowId]
+
+            seenTargetRowIds[dependencyTargetRowId] = true
+            targetRowIds.push(dependencyTargetRowId)
+        )
+
+        return targetRowIds
+
+    _getParentRowIdForHistoryRow: (row) ->
+        return null if !row?
+
+        if row.type == "task"
+            storyId = @_normalizeId(@_extractStoryId(row.item))
+            return "story-#{storyId}" if storyId?
+            return null
+
+        if row.type == "story"
+            epicId = @_normalizeId(row.epicId)
+            return "epic-#{epicId}" if epicId?
+            return null
+
+        return null
+
+    _collectDateHistoryTrackedRowIds: (sourceRowId) ->
+        return [] if !sourceRowId?
+
+        queue = [sourceRowId]
+        seenRowIds = {}
+        trackedRowIds = []
+
+        while queue.length
+            currentRowId = queue.shift()
+            continue if !currentRowId? or seenRowIds[currentRowId]
+
+            seenRowIds[currentRowId] = true
+            trackedRowIds.push(currentRowId)
+
+            currentRow = @rowNodesById[currentRowId]
+            continue if !currentRow?
+
+            parentRowId = @_getParentRowIdForHistoryRow(currentRow)
+            queue.push(parentRowId) if parentRowId? and !seenRowIds[parentRowId]
+
+            targetRowIds = @_getDependencyTargetRowIds(currentRowId)
+            _.each(targetRowIds, (targetRowId) ->
+                queue.push(targetRowId) if targetRowId? and !seenRowIds[targetRowId]
+            )
+
+        return trackedRowIds
+
+    _captureDateStateSnapshot: (trackedRowIds = null) ->
+        snapshot = {}
+        rowIds = trackedRowIds
+
+        if !_.isArray(rowIds) or !rowIds.length
+            rowIds = _.keys(@rowNodesById or {})
+
+        _.each(rowIds, (rowId) =>
+            row = @rowNodesById[rowId]
+            return if !row?.item?
+
+            startField = @_getStartEditableField(row.item)
+            snapshot[rowId] = {
+                rowId: rowId
+                type: row.type or null
+                startField: startField
+                start: @_normalizeDateForInput(row.item[startField])
+                due: @_normalizeDateForInput(row.item.due_date)
+            }
+        )
+
+        return snapshot
+
+    _buildDateStateChangesFromSnapshots: (beforeSnapshot, afterSnapshot) ->
+        changes = []
+        beforeSnapshot = beforeSnapshot or {}
+        afterSnapshot = afterSnapshot or {}
+
+        rowIds = _.uniq(_.keys(beforeSnapshot).concat(_.keys(afterSnapshot)))
+
+        _.each(rowIds, (rowId) =>
+            previousState = beforeSnapshot[rowId]
+            nextState = afterSnapshot[rowId]
+            return if !previousState? and !nextState?
+
+            previousStart = previousState?.start or null
+            previousDue = previousState?.due or null
+            nextStart = nextState?.start or null
+            nextDue = nextState?.due or null
+
+            return if previousStart == nextStart and previousDue == nextDue
+
+            changes.push({
+                rowId: rowId
+                type: nextState?.type or previousState?.type or null
+                startField: nextState?.startField or previousState?.startField or "estimated_start"
+                previous: {
+                    start: previousStart
+                    due: previousDue
+                }
+                next: {
+                    start: nextStart
+                    due: nextDue
+                }
+            })
+        )
+
+        return changes
+
+    _getFallbackDateHistoryStateChanges: (entry) ->
+        return [] if !entry?.rowId?
+
+        targetRow = @rowNodesById[entry.rowId]
+        fallbackStartField = entry.startField
+        if !fallbackStartField? and targetRow?.item?
+            fallbackStartField = @_getStartEditableField(targetRow.item)
+        fallbackStartField = fallbackStartField or "estimated_start"
+
+        return [{
+            rowId: entry.rowId
+            type: targetRow?.type or null
+            startField: fallbackStartField
+            previous: angular.copy(entry.previous)
+            next: angular.copy(entry.next)
+        }]
+
+    _finalizeDateHistoryEntryStateChanges: (entry, beforeSnapshot, trackedRowIds = []) ->
+        return entry if !entry?
+
+        stateChanges = []
+        if _.isObject(beforeSnapshot) and _.keys(beforeSnapshot).length
+            afterSnapshot = @_captureDateStateSnapshot(trackedRowIds)
+            stateChanges = @_buildDateStateChangesFromSnapshots(beforeSnapshot, afterSnapshot)
+
+        if !stateChanges.length
+            stateChanges = @_getFallbackDateHistoryStateChanges(entry)
+
+        entry.stateChanges = stateChanges
+        return entry
+
+    _getDateHistoryStateChanges: (entry) ->
+        stateChanges = entry?.stateChanges
+        return stateChanges if _.isArray(stateChanges) and stateChanges.length
+        return @_getFallbackDateHistoryStateChanges(entry)
+
+    _getHistoryRowTypeRank: (rowType) ->
+        return 0 if rowType == "task"
+        return 1 if rowType == "story"
+        return 2 if rowType == "epic"
+        return 3
+
+    _orderDateHistoryStateChangesForApply: (stateChanges, sourceRowId) ->
+        stateChangesByRowId = {}
+        _.each(stateChanges or [], (stateChange) ->
+            rowId = stateChange?.rowId
+            return if !rowId?
+            stateChangesByRowId[rowId] = stateChange
+        )
+
+        rowIds = _.keys(stateChangesByRowId)
+        return [] if !rowIds.length
+
+        outgoingRowIdsByRowId = {}
+        incomingEdgeCountByRowId = {}
+        _.each(rowIds, (rowId) ->
+            outgoingRowIdsByRowId[rowId] = []
+            incomingEdgeCountByRowId[rowId] = 0
+        )
+
+        seenEdges = {}
+        addEdge = (fromRowId, toRowId) =>
+            return if !fromRowId? or !toRowId? or fromRowId == toRowId
+            return if !stateChangesByRowId[fromRowId]? or !stateChangesByRowId[toRowId]?
+
+            edgeKey = "#{fromRowId}|#{toRowId}"
+            return if seenEdges[edgeKey]
+            seenEdges[edgeKey] = true
+
+            outgoingRowIdsByRowId[fromRowId].push(toRowId)
+            incomingEdgeCountByRowId[toRowId] = (incomingEdgeCountByRowId[toRowId] or 0) + 1
+
+        _.each(@sourceScheduleDependencies or [], (dependency) =>
+            dependencySourceRowId = @_getScheduleDependencyRowId(dependency, "source")
+            dependencyTargetRowId = @_getScheduleDependencyRowId(dependency, "target")
+            addEdge(dependencySourceRowId, dependencyTargetRowId)
+        )
+
+        _.each(rowIds, (rowId) =>
+            row = @rowNodesById[rowId]
+            return if !row?
+
+            parentRowId = @_getParentRowIdForHistoryRow(row)
+            addEdge(rowId, parentRowId)
+        )
+
+        sortRowIds = (candidateRowIds = []) =>
+            return (candidateRowIds or []).sort((leftRowId, rightRowId) =>
+                leftIsSource = if leftRowId == sourceRowId then 0 else 1
+                rightIsSource = if rightRowId == sourceRowId then 0 else 1
+                return leftIsSource - rightIsSource if leftIsSource != rightIsSource
+
+                leftTypeRank = @_getHistoryRowTypeRank(stateChangesByRowId[leftRowId]?.type)
+                rightTypeRank = @_getHistoryRowTypeRank(stateChangesByRowId[rightRowId]?.type)
+                return leftTypeRank - rightTypeRank if leftTypeRank != rightTypeRank
+
+                return -1 if leftRowId < rightRowId
+                return 1 if leftRowId > rightRowId
+                return 0
+            )
+
+        readyRowIds = sortRowIds(_.filter(rowIds, (rowId) ->
+            return (incomingEdgeCountByRowId[rowId] or 0) == 0
+        ))
+
+        orderedRowIds = []
+        while readyRowIds.length
+            currentRowId = readyRowIds.shift()
+            orderedRowIds.push(currentRowId)
+
+            _.each(outgoingRowIdsByRowId[currentRowId] or [], (nextRowId) ->
+                incomingEdgeCountByRowId[nextRowId] = (incomingEdgeCountByRowId[nextRowId] or 0) - 1
+                if incomingEdgeCountByRowId[nextRowId] == 0
+                    readyRowIds.push(nextRowId)
+            )
+
+            readyRowIds = sortRowIds(readyRowIds)
+
+        if orderedRowIds.length < rowIds.length
+            remainingRowIds = _.filter(rowIds, (rowId) ->
+                return orderedRowIds.indexOf(rowId) == -1
+            )
+            orderedRowIds = orderedRowIds.concat(sortRowIds(remainingRowIds))
+
+        return _.map(orderedRowIds, (rowId) ->
+            return stateChangesByRowId[rowId]
+        )
+
+    _applyDateStateHistoryEntry: (entry, direction) ->
+        stateChanges = @_getDateHistoryStateChanges(entry)
+        return @q.reject() if !stateChanges.length
+
+        orderedStateChanges = @_orderDateHistoryStateChangesForApply(stateChanges, entry?.rowId)
+
+        applyNextStateChange = (index) =>
+            return @q.when() if index >= orderedStateChanges.length
+
+            stateChange = orderedStateChanges[index]
+            return applyNextStateChange(index + 1) if !stateChange?.rowId?
+
+            targetState = if direction == "undo" then stateChange.previous else stateChange.next
+            return applyNextStateChange(index + 1) if !targetState?
+
+            row = @rowNodesById[stateChange.rowId]
+            if !row?.item? or !row.canEdit
+                return @q.reject() if stateChange.rowId == entry?.rowId
+                return applyNextStateChange(index + 1)
+
+            return @saveBarDateValues(stateChange.rowId, targetState.start, targetState.due, {
+                skipHistory: true
+                notify: false
+                startField: stateChange.startField
+            }).then =>
+                return applyNextStateChange(index + 1)
+
+        return applyNextStateChange(0)
 
     _buildColorChangeHistoryEntry: (targetRowId, previousColor, nextColor) ->
         return {
@@ -1297,15 +1593,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @_applyColorChangeHistoryEntry(entry, direction) if entry.type == "color"
         return @_applyRowReorderHistoryEntry(entry, direction) if entry.type == "row-reorder"
         return @_applyBarLinkHistoryEntry(entry, direction) if entry.type == "link"
-
-        targetState = if direction == "undo" then entry.previous else entry.next
-        return @q.reject() if !targetState?
-
-        return @saveBarDateValues(entry.rowId, targetState.start, targetState.due, {
-            skipHistory: true
-            notify: false
-            startField: entry.startField
-        })
+        return @_applyDateStateHistoryEntry(entry, direction)
 
     undoBarChange: (event) ->
         @stopToolbarMenuEvent(event)
@@ -1720,6 +2008,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @q.when() if currentStartValue == nextStartValue and currentDueValue == nextDueValue
 
         historyEntry = null
+        trackedRowIds = []
+        beforeSnapshot = null
         if !options.skipHistory
             historyEntry = @_buildBarChangeHistoryEntry(
                 rowId
@@ -1729,6 +2019,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 nextStartValue
                 nextDueValue
             )
+            trackedRowIds = @_collectDateHistoryTrackedRowIds(rowId)
+            beforeSnapshot = @_captureDateStateSnapshot(trackedRowIds)
 
         affectedEntities = @_collectAffectedEntitiesForDateSave(row)
 
@@ -1739,15 +2031,33 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @repo.save(row.item, true, {include_schedule: true}).then =>
             delete @savingRows[rowId]
             return @_reloadGanttDataSilently().then =>
+                if historyEntry?
+                    historyEntry = @_finalizeDateHistoryEntryStateChanges(
+                        historyEntry
+                        beforeSnapshot
+                        trackedRowIds
+                    )
                 @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
                 @confirm.notify("success") if options.notify != false
                 return
             , =>
                 return @_reloadDateAffectedEntities(affectedEntities).then =>
+                    if historyEntry?
+                        historyEntry = @_finalizeDateHistoryEntryStateChanges(
+                            historyEntry
+                            beforeSnapshot
+                            trackedRowIds
+                        )
                     @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
                     @confirm.notify("success") if options.notify != false
                     return
                 , =>
+                    if historyEntry?
+                        historyEntry = @_finalizeDateHistoryEntryStateChanges(
+                            historyEntry
+                            beforeSnapshot
+                            trackedRowIds
+                        )
                     @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
                     @timelineStartAnchor = null
                     @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
