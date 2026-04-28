@@ -1482,34 +1482,54 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             return stateChangesByRowId[rowId]
         )
 
+    _rowTypeToScheduleEntityType: (rowType) ->
+        return "epic" if rowType == "epic"
+        return "userstory" if rowType == "story"
+        return "task" if rowType == "task"
+        return null
+
+    _buildDateBulkApplyPayload: (entry, orderedStateChanges, direction) ->
+        payload = {
+            project_id: @_normalizeId(@scope.projectId)
+            bulk_updates: []
+        }
+
+        for stateChange in orderedStateChanges
+            continue if !stateChange?.rowId?
+
+            targetState = if direction == "undo" then stateChange.previous else stateChange.next
+            continue if !targetState?
+
+            row = @rowNodesById[stateChange.rowId]
+            if !row?.item? or !row.canEdit
+                return null if stateChange.rowId == entry?.rowId
+                continue
+
+            entityType = @_rowTypeToScheduleEntityType(row.type)
+            entityId = @_normalizeId(row.item.id)
+            continue if !entityType? or !entityId?
+
+            payload.bulk_updates.push({
+                entity_type: entityType
+                entity_id: entityId
+                start_field: stateChange.startField or @_getStartEditableField(row.item)
+                start: targetState.start
+                due: targetState.due
+            })
+
+        return null if !payload.project_id? or !payload.bulk_updates.length
+        return payload
+
     _applyDateStateHistoryEntry: (entry, direction) ->
         stateChanges = @_getDateHistoryStateChanges(entry)
         return @q.reject() if !stateChanges.length
 
         orderedStateChanges = @_orderDateHistoryStateChangesForApply(stateChanges, entry?.rowId)
+        payload = @_buildDateBulkApplyPayload(entry, orderedStateChanges, direction)
+        return @q.reject() if !payload?
 
-        applyNextStateChange = (index) =>
-            return @q.when() if index >= orderedStateChanges.length
-
-            stateChange = orderedStateChanges[index]
-            return applyNextStateChange(index + 1) if !stateChange?.rowId?
-
-            targetState = if direction == "undo" then stateChange.previous else stateChange.next
-            return applyNextStateChange(index + 1) if !targetState?
-
-            row = @rowNodesById[stateChange.rowId]
-            if !row?.item? or !row.canEdit
-                return @q.reject() if stateChange.rowId == entry?.rowId
-                return applyNextStateChange(index + 1)
-
-            return @saveBarDateValues(stateChange.rowId, targetState.start, targetState.due, {
-                skipHistory: true
-                notify: false
-                startField: stateChange.startField
-            }).then =>
-                return applyNextStateChange(index + 1)
-
-        return applyNextStateChange(0)
+        return @repo.create("schedule-bulk-date-apply", payload).then =>
+            return @_reloadGanttDataSilently()
 
     _buildColorChangeHistoryEntry: (targetRowId, previousColor, nextColor) ->
         return {
