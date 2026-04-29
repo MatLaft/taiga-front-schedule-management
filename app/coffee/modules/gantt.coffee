@@ -3062,7 +3062,6 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         bars = []
         arrowDetailUnits = @_getBarDetailUnits(timeline, 0.28)
         cornerDetailUnits = @_getBarDetailUnits(timeline, 0.16)
-        storyCapUnits = @_getBarDetailUnits(timeline, 0.18)
 
         _.each(rows or [], (row, index) ->
             rowIndexesById[row.rowId] = index
@@ -3101,8 +3100,6 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
             if shape == "rounded"
                 bar.rect = @_buildRoundedRect(startDay, endDay, rowIndex, timeline.totalDays, cornerDetailUnits)
-            else if barType == "story"
-                bar.pathD = @_buildStoryPath(startDay, endDay, rowIndex, timeline.totalDays, storyCapUnits)
             else
                 bar.pathD = @_buildEpicPath(startDay, endDay, rowIndex, timeline.totalDays, arrowDetailUnits)
 
@@ -3123,17 +3120,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         yRadius = Math.min(.17, (bottom - top) / 2)
         return "M#{left},#{top + yRadius}Q#{left},#{top} #{left + xRadius},#{top}L#{right - xRadius},#{top}Q#{right},#{top} #{right},#{top + yRadius}L#{right},#{bottom}L#{right},#{tip}L#{right - inset},#{bottom}L#{left + inset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
 
-    _buildStoryPath: (startDay, endDay, rowIndex, totalDays, capUnits = 0.18) ->
-        left = Math.max(0, startDay - 1)
-        right = Math.min(totalDays, endDay)
-        top = rowIndex + 0.22
-        bottom = rowIndex + 0.58
-        span = Math.max(right - left, 0.5)
-        yRadius = (bottom - top) / 2
-        xRadius = Math.min(capUnits, span / 2)
-        innerLeft = left + xRadius
-        innerRight = right - xRadius
-        return "M#{innerLeft},#{top}L#{innerRight},#{top}A#{xRadius},#{yRadius} 0 0 1 #{innerRight},#{bottom}L#{innerLeft},#{bottom}A#{xRadius},#{yRadius} 0 0 1 #{innerLeft},#{top}z"
+    _buildStoryPath: (startDay, endDay, rowIndex, totalDays, detailUnits = 0.28) ->
+        # Stories must follow the same geometry used by epics.
+        return @_buildEpicPath(startDay, endDay, rowIndex, totalDays, detailUnits)
 
     _buildRoundedRect: (startDay, endDay, rowIndex, totalDays, cornerUnits = 0.16) ->
         left = Math.max(0, startDay - 1)
@@ -3544,16 +3533,7 @@ GanttSyncRowsDirective = ->
             "M#{left},#{top + yRadius}Q#{left},#{top} #{left + xRadius},#{top}L#{right - xRadius},#{top}Q#{right},#{top} #{right},#{top + yRadius}L#{right},#{bottom}L#{right},#{tip}L#{right - inset},#{bottom}L#{left + inset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
 
         buildStoryPath = (startDay, endDay, rowIndex, totalDays) ->
-            left = Math.max(0, startDay - 1)
-            right = Math.min(totalDays, endDay)
-            top = rowIndex + 0.22
-            bottom = rowIndex + 0.58
-            span = Math.max(right - left, 0.5)
-            yRadius = (bottom - top) / 2
-            xRadius = Math.min(getBarDetailUnits(0.18), span / 2)
-            innerLeft = left + xRadius
-            innerRight = right - xRadius
-            "M#{innerLeft},#{top}L#{innerRight},#{top}A#{xRadius},#{yRadius} 0 0 1 #{innerRight},#{bottom}L#{innerLeft},#{bottom}A#{xRadius},#{yRadius} 0 0 1 #{innerLeft},#{top}z"
+            buildEpicPath(startDay, endDay, rowIndex, totalDays)
 
         buildRoundedRect = (startDay, endDay, rowIndex, totalDays) ->
             left = Math.max(0, startDay - 1)
@@ -3646,7 +3626,7 @@ GanttSyncRowsDirective = ->
 
             return rowIndex + 0.28 if shape == "rounded"
             return rowIndex + 0.17 if barType == "epic"
-            return rowIndex + 0.16 if barType == "story"
+            return rowIndex + 0.17 if barType == "story"
             return rowIndex + 0.22
 
         buildTreeRowOrderById = ->
@@ -3856,12 +3836,10 @@ GanttSyncRowsDirective = ->
                 targetShape = targetBar.getAttribute("data-shape") or ""
                 targetBarType = targetBar.getAttribute("data-bar-type") or ""
                 targetEndpointGap = endpointGap
-                if targetBarType == "story"
-                    targetEndpointGap += getBarDetailUnits(0.06)
                 if targetShape == "rounded"
                     targetEndpointGap += (2 / xScale)
                 targetTipGapY = (5 / yScale)
-                if targetShape == "rounded" or targetBarType == "story"
+                if targetShape == "rounded"
                     targetTipGapY += (2 / yScale)
 
                 sourceX = Math.min(totalDays, sourceEndDay + endpointGap)
@@ -3875,7 +3853,7 @@ GanttSyncRowsDirective = ->
                 targetX = Math.max(0, targetStartDay - 1 - targetEndpointGap)
                 targetY = targetRowIndex + 0.5
                 targetTopOffset = if targetShape == "rounded" then 0.28 else 0.22
-                targetBottomOffset = if targetShape == "rounded" then 0.78 else if targetBarType == "epic" then 0.74 else 0.58
+                targetBottomOffset = if targetShape == "rounded" then 0.78 else if targetBarType == "epic" or targetBarType == "story" then 0.74 else 0.58
                 targetTopY = targetRowIndex + targetTopOffset
                 targetBottomY = targetRowIndex + targetBottomOffset
                 linkRoute = if sourceResolution.depth > 0
@@ -4500,16 +4478,7 @@ GanttBarResizeDirective = ($document) ->
             "M#{left},#{top + yRadius}Q#{left},#{top} #{left + xRadius},#{top}L#{right - xRadius},#{top}Q#{right},#{top} #{right},#{top + yRadius}L#{right},#{bottom}L#{right},#{tip}L#{right - inset},#{bottom}L#{left + inset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
 
         buildStoryPath = (startDay, endDay, rowIndex, totalDays) ->
-            left = Math.max(0, startDay - 1)
-            right = Math.min(totalDays, endDay)
-            top = rowIndex + 0.22
-            bottom = rowIndex + 0.58
-            span = Math.max(right - left, 0.5)
-            yRadius = (bottom - top) / 2
-            xRadius = Math.min(getBarDetailUnits(0.18), span / 2)
-            innerLeft = left + xRadius
-            innerRight = right - xRadius
-            "M#{innerLeft},#{top}L#{innerRight},#{top}A#{xRadius},#{yRadius} 0 0 1 #{innerRight},#{bottom}L#{innerLeft},#{bottom}A#{xRadius},#{yRadius} 0 0 1 #{innerLeft},#{top}z"
+            buildEpicPath(startDay, endDay, rowIndex, totalDays)
 
         buildRoundedRect = (startDay, endDay, rowIndex, totalDays) ->
             left = Math.max(0, startDay - 1)
@@ -4562,7 +4531,7 @@ GanttBarResizeDirective = ($document) ->
             bar.setAttribute("data-end-day", endDay)
             bar.setAttribute("data-row-index", rowIndex)
             if shape != "rounded"
-                shapeRendering = if barType == "epic" then "geometricPrecision" else "crispEdges"
+                shapeRendering = if barType == "epic" or barType == "story" then "geometricPrecision" else "crispEdges"
                 bar.setAttribute("shape-rendering", shapeRendering)
             bar.style.fill = row.barColor if row?.barColor?
 
@@ -4838,7 +4807,7 @@ GanttBarResizeDirective = ($document) ->
 
             return rowIndex + 0.28 if shape == "rounded"
             return rowIndex + 0.17 if barType == "epic"
-            return rowIndex + 0.16 if barType == "story"
+            return rowIndex + 0.17 if barType == "story"
             return rowIndex + 0.22
 
         buildTreeRowOrderById = ->
