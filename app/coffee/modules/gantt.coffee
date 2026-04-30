@@ -3115,14 +3115,24 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         bottom = rowIndex + 0.58
         tip = rowIndex + 0.74
         span = Math.max(right - left, 0.5)
+        center = left + (span / 2)
+        sideInset = Math.min(detailUnits, span / 4)
+        centerInset = Math.min(detailUnits * .75, span / 6)
+        xRadius = Math.min(detailUnits * .9, span / 3)
+        yRadius = Math.min(.17, (bottom - top) / 2)
+        return "M#{left},#{top + yRadius}Q#{left},#{top} #{left + xRadius},#{top}L#{right - xRadius},#{top}Q#{right},#{top} #{right},#{top + yRadius}L#{right},#{bottom}L#{right},#{tip}L#{right - sideInset},#{bottom}L#{center + centerInset},#{bottom}L#{center},#{tip}L#{center - centerInset},#{bottom}L#{left + sideInset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
+
+    _buildStoryPath: (startDay, endDay, rowIndex, totalDays, detailUnits = 0.28) ->
+        left = Math.max(0, startDay - 1)
+        right = Math.min(totalDays, endDay)
+        top = rowIndex + 0.22
+        bottom = rowIndex + 0.58
+        tip = rowIndex + 0.74
+        span = Math.max(right - left, 0.5)
         inset = Math.min(detailUnits, span / 3)
         xRadius = Math.min(detailUnits * .9, span / 3)
         yRadius = Math.min(.17, (bottom - top) / 2)
         return "M#{left},#{top + yRadius}Q#{left},#{top} #{left + xRadius},#{top}L#{right - xRadius},#{top}Q#{right},#{top} #{right},#{top + yRadius}L#{right},#{bottom}L#{right},#{tip}L#{right - inset},#{bottom}L#{left + inset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
-
-    _buildStoryPath: (startDay, endDay, rowIndex, totalDays, detailUnits = 0.28) ->
-        # Stories must follow the same geometry used by epics.
-        return @_buildEpicPath(startDay, endDay, rowIndex, totalDays, detailUnits)
 
     _buildRoundedRect: (startDay, endDay, rowIndex, totalDays, cornerUnits = 0.16) ->
         left = Math.max(0, startDay - 1)
@@ -3527,13 +3537,24 @@ GanttSyncRowsDirective = ->
             bottom = rowIndex + 0.58
             tip = rowIndex + 0.74
             span = Math.max(right - left, 0.5)
+            center = left + (span / 2)
+            sideInset = Math.min(getBarDetailUnits(0.28), span / 4)
+            centerInset = Math.min(getBarDetailUnits(0.21), span / 6)
+            xRadius = Math.min(getBarDetailUnits(0.25), span / 3)
+            yRadius = Math.min(.17, (bottom - top) / 2)
+            "M#{left},#{top + yRadius}Q#{left},#{top} #{left + xRadius},#{top}L#{right - xRadius},#{top}Q#{right},#{top} #{right},#{top + yRadius}L#{right},#{bottom}L#{right},#{tip}L#{right - sideInset},#{bottom}L#{center + centerInset},#{bottom}L#{center},#{tip}L#{center - centerInset},#{bottom}L#{left + sideInset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
+
+        buildStoryPath = (startDay, endDay, rowIndex, totalDays) ->
+            left = Math.max(0, startDay - 1)
+            right = Math.min(totalDays, endDay)
+            top = rowIndex + 0.22
+            bottom = rowIndex + 0.58
+            tip = rowIndex + 0.74
+            span = Math.max(right - left, 0.5)
             inset = Math.min(getBarDetailUnits(0.28), span / 3)
             xRadius = Math.min(getBarDetailUnits(0.25), span / 3)
             yRadius = Math.min(.17, (bottom - top) / 2)
             "M#{left},#{top + yRadius}Q#{left},#{top} #{left + xRadius},#{top}L#{right - xRadius},#{top}Q#{right},#{top} #{right},#{top + yRadius}L#{right},#{bottom}L#{right},#{tip}L#{right - inset},#{bottom}L#{left + inset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
-
-        buildStoryPath = (startDay, endDay, rowIndex, totalDays) ->
-            buildEpicPath(startDay, endDay, rowIndex, totalDays)
 
         buildRoundedRect = (startDay, endDay, rowIndex, totalDays) ->
             left = Math.max(0, startDay - 1)
@@ -4472,13 +4493,24 @@ GanttBarResizeDirective = ($document) ->
             bottom = rowIndex + 0.58
             tip = rowIndex + 0.74
             span = Math.max(right - left, 0.5)
+            center = left + (span / 2)
+            sideInset = Math.min(getBarDetailUnits(0.28), span / 4)
+            centerInset = Math.min(getBarDetailUnits(0.21), span / 6)
+            xRadius = Math.min(getBarDetailUnits(0.25), span / 3)
+            yRadius = Math.min(.17, (bottom - top) / 2)
+            "M#{left},#{top + yRadius}Q#{left},#{top} #{left + xRadius},#{top}L#{right - xRadius},#{top}Q#{right},#{top} #{right},#{top + yRadius}L#{right},#{bottom}L#{right},#{tip}L#{right - sideInset},#{bottom}L#{center + centerInset},#{bottom}L#{center},#{tip}L#{center - centerInset},#{bottom}L#{left + sideInset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
+
+        buildStoryPath = (startDay, endDay, rowIndex, totalDays) ->
+            left = Math.max(0, startDay - 1)
+            right = Math.min(totalDays, endDay)
+            top = rowIndex + 0.22
+            bottom = rowIndex + 0.58
+            tip = rowIndex + 0.74
+            span = Math.max(right - left, 0.5)
             inset = Math.min(getBarDetailUnits(0.28), span / 3)
             xRadius = Math.min(getBarDetailUnits(0.25), span / 3)
             yRadius = Math.min(.17, (bottom - top) / 2)
             "M#{left},#{top + yRadius}Q#{left},#{top} #{left + xRadius},#{top}L#{right - xRadius},#{top}Q#{right},#{top} #{right},#{top + yRadius}L#{right},#{bottom}L#{right},#{tip}L#{right - inset},#{bottom}L#{left + inset},#{bottom}L#{left},#{tip}L#{left},#{bottom}z"
-
-        buildStoryPath = (startDay, endDay, rowIndex, totalDays) ->
-            buildEpicPath(startDay, endDay, rowIndex, totalDays)
 
         buildRoundedRect = (startDay, endDay, rowIndex, totalDays) ->
             left = Math.max(0, startDay - 1)
