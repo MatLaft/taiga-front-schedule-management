@@ -280,7 +280,7 @@ div.wrapper.gantt(
                                             span.gantt-row-type-icon(ng-style="node.barColor ? {'color': node.barColor} : null")
                                                 button.gantt-row-type-button(
                                                     type="button"
-                                                    ng-class="{'is-open': ctrl.isNodeColorMenuOpen(node.rowId), 'is-disabled': !ctrl.canEditNodeColor(node)}"
+                                                    ng-class="{'is-open': ctrl.isNodeColorMenuOpen(node.rowId)}"
                                                     ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(node)"
                                                     ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                     ng-click="ctrl.toggleNodeColorMenu($event, node)"
@@ -351,7 +351,7 @@ div.wrapper.gantt(
                                                     span.gantt-row-type-icon(ng-style="story.barColor ? {'color': story.barColor} : null")
                                                         button.gantt-row-type-button(
                                                             type="button"
-                                                            ng-class="{'is-open': ctrl.isNodeColorMenuOpen(story.rowId), 'is-disabled': !ctrl.canEditNodeColor(story)}"
+                                                            ng-class="{'is-open': ctrl.isNodeColorMenuOpen(story.rowId)}"
                                                             ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(story)"
                                                             ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                             ng-click="ctrl.toggleNodeColorMenu($event, story)"
@@ -415,7 +415,7 @@ div.wrapper.gantt(
                                                         span.gantt-row-type-icon(ng-style="task.barColor ? {'color': task.barColor} : null")
                                                             button.gantt-row-type-button(
                                                                 type="button"
-                                                                ng-class="{'is-open': ctrl.isNodeColorMenuOpen(task.rowId), 'is-disabled': !ctrl.canEditNodeColor(task)}"
+                                                                ng-class="{'is-open': ctrl.isNodeColorMenuOpen(task.rowId)}"
                                                                 ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(task)"
                                                                 ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                                 ng-click="ctrl.toggleNodeColorMenu($event, task)"
@@ -486,7 +486,7 @@ div.wrapper.gantt(
                                             span.gantt-row-type-icon(ng-style="node.barColor ? {'color': node.barColor} : null")
                                                 button.gantt-row-type-button(
                                                     type="button"
-                                                    ng-class="{'is-open': ctrl.isNodeColorMenuOpen(node.rowId), 'is-disabled': !ctrl.canEditNodeColor(node)}"
+                                                    ng-class="{'is-open': ctrl.isNodeColorMenuOpen(node.rowId)}"
                                                     ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(node)"
                                                     ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                     ng-click="ctrl.toggleNodeColorMenu($event, node)"
@@ -550,7 +550,7 @@ div.wrapper.gantt(
                                                 span.gantt-row-type-icon(ng-style="task.barColor ? {'color': task.barColor} : null")
                                                     button.gantt-row-type-button(
                                                         type="button"
-                                                        ng-class="{'is-open': ctrl.isNodeColorMenuOpen(task.rowId), 'is-disabled': !ctrl.canEditNodeColor(task)}"
+                                                        ng-class="{'is-open': ctrl.isNodeColorMenuOpen(task.rowId)}"
                                                         ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(task)"
                                                         ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                         ng-click="ctrl.toggleNodeColorMenu($event, task)"
@@ -612,7 +612,7 @@ div.wrapper.gantt(
                                         span.gantt-row-type-icon(ng-style="node.barColor ? {'color': node.barColor} : null")
                                             button.gantt-row-type-button(
                                                 type="button"
-                                                ng-class="{'is-open': ctrl.isNodeColorMenuOpen(node.rowId), 'is-disabled': !ctrl.canEditNodeColor(node)}"
+                                                ng-class="{'is-open': ctrl.isNodeColorMenuOpen(node.rowId)}"
                                                 ng-disabled="!ctrl.colorPickerModeActive || !ctrl.canEditNodeColor(node)"
                                                 ng-mousedown="ctrl.stopColorMenuEvent($event)"
                                                 ng-click="ctrl.toggleNodeColorMenu($event, node)"
