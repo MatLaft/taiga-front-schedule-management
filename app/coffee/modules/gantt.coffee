@@ -4442,12 +4442,12 @@ GanttBarResizeDirective = ($document) ->
             targetSvg = svg or getBarsSvg()
             return null if !targetSvg?
 
-            linkLayer = targetSvg.querySelector(".gantt-link-layer") or targetSvg
-            if !hoverSourceCapLayer? or hoverSourceCapLayer.parentNode != linkLayer
+            sourceCapLayer = targetSvg.querySelector(".gantt-link-source-cap-layer") or targetSvg
+            if !hoverSourceCapLayer? or hoverSourceCapLayer.parentNode != sourceCapLayer
                 hoverSourceCapLayer?.remove()
                 hoverSourceCapLayer = document.createElementNS(SVG_NS, "g")
                 hoverSourceCapLayer.setAttribute("class", "gantt-link-hover-source-cap-layer")
-                linkLayer.appendChild(hoverSourceCapLayer)
+                sourceCapLayer.appendChild(hoverSourceCapLayer)
                 hoverSourceCapPathsBySourceRowId = {}
 
             return hoverSourceCapLayer
