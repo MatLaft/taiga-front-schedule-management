@@ -209,6 +209,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         edgeKeys = {}
         dummyStartNodeId = "__critical-path-start__"
         dummyEndNodeId = "__critical-path-end__"
+        projectStartMoment = null
 
         _.each(@rowNodesById or {}, (row, rowId) =>
             return if !row?.item?
@@ -227,6 +228,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 incomingEdges: []
                 outgoingEdges: []
             }
+
+            if !projectStartMoment? or row.startMoment.isBefore(projectStartMoment)
+                projectStartMoment = row.startMoment.clone()
         )
 
         addEdge = (sourceNodeId, targetNodeId, lagDays, isSynthetic = false) =>
@@ -278,6 +282,79 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         graphRowIds = _.keys(nodesByNodeId)
         return state if !graphRowIds.length
 
+        projectEndMoment = null
+        _.each(graphRowIds, (rowId) =>
+            rowDueMoment = nodesByNodeId[rowId]?.row?.dueMoment
+            return if !rowDueMoment?
+
+            if !projectEndMoment? or rowDueMoment.isAfter(projectEndMoment)
+                projectEndMoment = rowDueMoment.clone()
+        )
+        return state if !projectEndMoment?
+
+        finalRowIds = _.filter(graphRowIds, (rowId) ->
+            rowDueMoment = nodesByNodeId[rowId]?.row?.dueMoment
+            return false if !rowDueMoment?
+            return rowDueMoment.isSame(projectEndMoment, "day")
+        )
+        return state if !finalRowIds.length
+
+        fillDateBasedSlackForRows = (rowIds = []) =>
+            return if !projectEndMoment?
+
+            _.each(rowIds or [], (rowId) =>
+                currentSlack = state.totalSlackByRowId[rowId]
+                return if currentSlack? and isFinite(currentSlack)
+
+                rowDueMoment = nodesByNodeId[rowId]?.row?.dueMoment
+                return if !rowDueMoment?
+
+                fallbackSlackDays = projectEndMoment.diff(rowDueMoment, "days")
+                return if !isFinite(fallbackSlackDays)
+
+                state.totalSlackByRowId[rowId] = Math.max(0, fallbackSlackDays)
+            )
+
+        reachesFinalByRowId = {}
+        pendingRowIds = finalRowIds.slice(0)
+
+        while pendingRowIds.length
+            currentRowId = pendingRowIds.pop()
+            continue if reachesFinalByRowId[currentRowId]
+
+            reachesFinalByRowId[currentRowId] = true
+            _.each(nodesByNodeId[currentRowId]?.incomingEdges or [], (edge) ->
+                sourceRowId = edge.sourceNodeId
+                return if !sourceRowId?
+                pendingRowIds.push(sourceRowId)
+            )
+
+        candidateRowIds = _.filter(graphRowIds, (rowId) ->
+            return !!reachesFinalByRowId[rowId]
+        )
+        return state if !candidateRowIds.length
+
+        _.each(candidateRowIds, (rowId) =>
+            node = nodesByNodeId[rowId]
+            return if !node?
+
+            node.incomingEdges = _.filter(node.incomingEdges or [], (edge) ->
+                return !!reachesFinalByRowId[edge.sourceNodeId] and !!reachesFinalByRowId[edge.targetNodeId]
+            )
+            node.outgoingEdges = _.filter(node.outgoingEdges or [], (edge) ->
+                return !!reachesFinalByRowId[edge.sourceNodeId] and !!reachesFinalByRowId[edge.targetNodeId]
+            )
+        )
+
+        projectStartMoment = null
+        _.each(candidateRowIds, (rowId) =>
+            rowStartMoment = nodesByNodeId[rowId]?.row?.startMoment
+            return if !rowStartMoment?
+
+            if !projectStartMoment? or rowStartMoment.isBefore(projectStartMoment)
+                projectStartMoment = rowStartMoment.clone()
+        )
+
         nodesByNodeId[dummyStartNodeId] = {
             nodeId: dummyStartNodeId
             rowId: null
@@ -297,18 +374,19 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             outgoingEdges: []
         }
 
-        _.each(graphRowIds, (rowId) =>
+        _.each(candidateRowIds, (rowId) =>
             node = nodesByNodeId[rowId]
             return if !node?.row?
 
             if (node.incomingEdges?.length or 0) == 0
                 addEdge(dummyStartNodeId, rowId, 0, true)
 
-            if (node.outgoingEdges?.length or 0) == 0
+            rowDueMoment = node.row?.dueMoment
+            if rowDueMoment?.isSame(projectEndMoment, "day")
                 addEdge(rowId, dummyEndNodeId, 0, true)
         )
 
-        activeNodeIds = graphRowIds.slice(0)
+        activeNodeIds = candidateRowIds.slice(0)
         activeNodeIds.push(dummyStartNodeId)
         activeNodeIds.push(dummyEndNodeId)
 
@@ -377,17 +455,28 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             tailByNodeId[nodeId] = node.durationDays + bestOutgoingScore
         )
 
-        projectDuration = headByNodeId[dummyEndNodeId] or 0
-        return state if projectDuration <= 0
+        networkDuration = headByNodeId[dummyEndNodeId] or 0
+        return state if networkDuration <= 0
+
+        scheduleDuration = 0
+        if projectStartMoment? and projectEndMoment?
+            scheduleDuration = projectEndMoment.diff(projectStartMoment, "days") + 1
+            scheduleDuration = 0 if !isFinite(scheduleDuration) or scheduleDuration < 0
+
+        projectDuration = Math.max(networkDuration, scheduleDuration)
+        return state if !isFinite(projectDuration) or projectDuration <= 0
         state.projectDurationDays = projectDuration
 
         scoreEpsilon = 0.000001
-        isCriticalScore = (value) ->
-            return Math.abs(value - projectDuration) <= scoreEpsilon
+        isSameSlack = (value, targetValue) ->
+            return Math.abs(value - targetValue) <= scoreEpsilon
 
         realRowTopologicalOrder = _.filter(topologicalOrder, (nodeId) ->
             return nodeId != dummyStartNodeId and nodeId != dummyEndNodeId
         )
+
+        rowMetrics = []
+        minSlackDays = null
 
         _.each(realRowTopologicalOrder, (rowId) =>
             node = nodesByNodeId[rowId]
@@ -395,8 +484,14 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
             headScore = headByNodeId[rowId] or 0
             tailScore = tailByNodeId[rowId] or 0
+            return if !isFinite(headScore) or !isFinite(tailScore)
+
             pathThroughNode = headScore + tailScore - node.durationDays
+            return if !isFinite(pathThroughNode)
+
             totalSlackDays = Math.max(0, projectDuration - pathThroughNode)
+            return if !isFinite(totalSlackDays)
+
             earlyStartDays = Math.max(0, headScore - node.durationDays)
             earlyFinishDays = headScore
             lateStartDays = Math.max(0, projectDuration - tailScore)
@@ -408,9 +503,28 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             state.lateStartByRowId[rowId] = lateStartDays
             state.lateFinishByRowId[rowId] = lateFinishDays
 
-            if isCriticalScore(pathThroughNode)
-                state.rows.push(node.row)
-                state.rowIds[rowId] = true
+            rowMetrics.push({
+                rowId: rowId
+                row: node.row
+                totalSlackDays: totalSlackDays
+            })
+
+            if minSlackDays == null or totalSlackDays < minSlackDays
+                minSlackDays = totalSlackDays
+        )
+
+        if !rowMetrics.length
+            fillDateBasedSlackForRows(graphRowIds)
+            return state
+        minSlackDays = 0 if minSlackDays == null
+        state.minSlackDays = minSlackDays
+
+        _.each(rowMetrics, (metric) =>
+            return if !metric?.rowId? or !metric?.row?
+            return if !isSameSlack(metric.totalSlackDays, minSlackDays)
+
+            state.rows.push(metric.row)
+            state.rowIds[metric.rowId] = true
         )
 
         return state if !state.rows.length
@@ -421,16 +535,24 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             sourceHead = headByNodeId[edge.sourceNodeId]
             targetTail = tailByNodeId[edge.targetNodeId]
             return if sourceHead == null or targetTail == null
+            return if !isFinite(sourceHead) or !isFinite(targetTail)
 
             pathThroughEdge = sourceHead + edge.lagDays + targetTail
-            return if !isCriticalScore(pathThroughEdge)
+            return if !isFinite(pathThroughEdge)
+
+            edgeSlackDays = Math.max(0, projectDuration - pathThroughEdge)
+            return if !isFinite(edgeSlackDays)
+            return if !isSameSlack(edgeSlackDays, minSlackDays)
 
             sourceRowId = nodesByNodeId[edge.sourceNodeId]?.rowId
             targetRowId = nodesByNodeId[edge.targetNodeId]?.rowId
             return if !sourceRowId? or !targetRowId?
+            return if !state.rowIds[sourceRowId] or !state.rowIds[targetRowId]
 
             state.linkPairKeys["#{sourceRowId}|#{targetRowId}"] = true
         )
+
+        fillDateBasedSlackForRows(graphRowIds)
 
         return state
 
@@ -444,6 +566,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             earlyFinishByRowId: {}
             lateStartByRowId: {}
             lateFinishByRowId: {}
+            minSlackDays: null
             projectDurationDays: 0
         }
 
@@ -469,6 +592,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         totalSlackDays = @criticalPathState?.totalSlackByRowId?["#{rowId}"]
         return null if totalSlackDays == null
+        return null if !isFinite(totalSlackDays)
 
         return totalSlackDays
 
@@ -477,13 +601,12 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return null if !@criticalPathHighlightActive
         return null if (@criticalPathState?.rows?.length or 0) <= 0
         return null if (@rowNodesById?[rowId]?.children?.length or 0) > 0
-        return null if @isCriticalPathRow(rowId)
 
         totalSlackDays = @getCriticalPathTotalSlackDays(rowId)
         return null if totalSlackDays == null
 
         normalizedSlackDays = Math.max(0, Math.round(totalSlackDays))
-        return null if normalizedSlackDays <= 0
+        return null if !isFinite(normalizedSlackDays)
 
         label = @_translateGanttText("PROJECT.GANTT.CRITICAL_PATH.SLACK_LABEL", "Slack")
         dayLabel = if normalizedSlackDays == 1
