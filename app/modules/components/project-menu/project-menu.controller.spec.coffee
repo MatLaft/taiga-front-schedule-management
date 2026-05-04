@@ -115,7 +115,7 @@ describe "ProjectMenu", ->
                     is_kanban_activated: true,
                     is_issues_activated: true,
                     is_wiki_activated: true,
-                    my_permissions: ["view_epics", "view_us", "view_issues", "view_wiki_pages", "view_project"]
+                    my_permissions: ["view_epics", "view_us", "view_issues", "view_wiki_pages", "view_schedule", "view_gantt"]
                 })
 
                 mocks.projectService.project = project

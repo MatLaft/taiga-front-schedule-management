@@ -90,6 +90,9 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
     loadProject: ->
         project = @projectService.project.toJS()
 
+        if (project?.my_permissions or []).indexOf("view_schedule") == -1
+            @errorHandlingService.permissionDenied()
+
         @scope.projectId = project.id
         @scope.project = project
         @projectMembersById = {}
@@ -1010,7 +1013,12 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         return "modify_task" if type == "task"
         return null
 
-    canEditDate: (row) ->
+    _hasProjectPermission: (permission) ->
+        project = @scope.project
+        return false if !project? or !permission?
+        return (project.my_permissions or []).indexOf(permission) != -1
+
+    canEditEstimatedHours: (row) ->
         project = @scope.project
         return false if !row?.item? or !project?
         return false if project.archived_code
@@ -1018,7 +1026,11 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         permission = @_editPermissionByRowType(row.type)
         return false if !permission?
 
-        return (project.my_permissions or []).indexOf(permission) != -1
+        return @_hasProjectPermission(permission)
+
+    canEditDate: (row) ->
+        return false if !@canEditEstimatedHours(row)
+        return @_hasProjectPermission("modify_schedule_dates")
 
     _hasItemField: (item, field) ->
         return false if !item? or !field?
@@ -1097,7 +1109,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         $event?.preventDefault()
         $event?.stopPropagation()
 
-        return if !row? or !@canEditDate(row)
+        return if !row? or !@canEditEstimatedHours(row)
         return if @isSaving(row, "estimated_hours")
 
         @editingEstimatedHoursKey = @rowKey(row)
@@ -1163,7 +1175,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @confirmEstimatedHoursEdit(row)
 
     saveEstimatedHours: (row) ->
-        return @q.reject() if !@canEditDate(row)
+        return @q.reject() if !@canEditEstimatedHours(row)
         return @q.when() if @isSaving(row, "estimated_hours")
         return @q.reject() if !row?.item?
 

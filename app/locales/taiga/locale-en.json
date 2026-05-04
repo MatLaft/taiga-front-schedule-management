@@ -311,6 +311,15 @@
                 "COMMENT_ISSUES": "Comment issues",
                 "DELETE_ISSUES": "Delete issues"
             },
+            "SCHEDULE_GANTT": {
+                "NAME": "Schedule / Gantt",
+                "VIEW_SCHEDULE": "View schedule",
+                "VIEW_GANTT": "View gantt",
+                "MODIFY_LINKS": "Modify links",
+                "MODIFY_EXPECTED_START_DATES": "Modify expected start dates",
+                "MODIFY_COLOR": "Modify color",
+                "MODIFY_GANTT_LIST_ORDER": "Modify gantt list order"
+            },
             "WIKI": {
                 "NAME": "Wiki",
                 "VIEW_WIKI_PAGES": "View wiki pages",

@@ -15,7 +15,7 @@ bindMethods = @.taiga.bindMethods
 
 module = angular.module("taigaAdmin")
 
-publicPermissions = ['view_epics', 'view_milestones', 'view_us', 'view_tasks', 'view_issues', 'view_wiki_pages', 'view_wiki_links']
+publicPermissions = ['view_epics', 'view_milestones', 'view_us', 'view_tasks', 'view_issues', 'view_schedule', 'view_gantt', 'view_wiki_pages', 'view_wiki_links']
 
 #############################################################################
 ## Project Roles Controller
@@ -226,7 +226,7 @@ RolesDirective =  ->
 module.directive("tgRoles", RolesDirective)
 
 NewRoleDirective = ($tgrepo, $confirm) ->
-    DEFAULT_PERMISSIONS = ["view_project", "view_milestones", "view_us", "view_tasks", "view_issues"]
+    DEFAULT_PERMISSIONS = ["view_project", "view_milestones", "view_us", "view_tasks", "view_issues", "view_schedule", "view_gantt"]
 
     link = ($scope, $el, $attrs) ->
         $ctrl = $el.controller()
@@ -411,6 +411,20 @@ RolePermissionsDirective = ($rootscope, $repo, $confirm, $compile) ->
             categories.push({
                 name: "COMMON.PERMISIONS_CATEGORIES.ISSUES.NAME",
                 permissions: setActivePermissions(issuePermissions)
+            })
+
+            scheduleGanttPermissions = [
+                { key: "view_schedule", name: "COMMON.PERMISIONS_CATEGORIES.SCHEDULE_GANTT.VIEW_SCHEDULE"}
+                { key: "view_gantt", name: "COMMON.PERMISIONS_CATEGORIES.SCHEDULE_GANTT.VIEW_GANTT"}
+                { key: "modify_schedule_links", name: "COMMON.PERMISIONS_CATEGORIES.SCHEDULE_GANTT.MODIFY_LINKS"}
+                { key: "modify_schedule_dates", name: "COMMON.PERMISIONS_CATEGORIES.SCHEDULE_GANTT.MODIFY_EXPECTED_START_DATES"}
+                { key: "modify_schedule_color", name: "COMMON.PERMISIONS_CATEGORIES.SCHEDULE_GANTT.MODIFY_COLOR"}
+                { key: "modify_gantt_list_order", name: "COMMON.PERMISIONS_CATEGORIES.SCHEDULE_GANTT.MODIFY_GANTT_LIST_ORDER"}
+            ]
+
+            categories.push({
+                name: "COMMON.PERMISIONS_CATEGORIES.SCHEDULE_GANTT.NAME",
+                permissions: setActivePermissions(scheduleGanttPermissions)
             })
 
             wikiPermissions = [

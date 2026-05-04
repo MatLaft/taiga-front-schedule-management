@@ -199,9 +199,9 @@ div.wrapper.issues.schedule(
                             span.schedule-status-value(ng-style="ctrl.getStatusStyle(row)") {{ ctrl.getStatusLabel(row) }}
 
                         div.estimated-hours-field.schedule-hours-cell(
-                            ng-class="{'is-readonly': !ctrl.canEditDate(row), 'is-editing': ctrl.isEditingEstimatedHours(row)}"
+                            ng-class="{'is-readonly': !ctrl.canEditEstimatedHours(row), 'is-editing': ctrl.isEditingEstimatedHours(row)}"
                         )
-                            .options-column(ng-if="ctrl.canEditDate(row) && !ctrl.isEditingEstimatedHours(row)")
+                            .options-column(ng-if="ctrl.canEditEstimatedHours(row) && !ctrl.isEditingEstimatedHours(row)")
                                 a.edit-estimated-hours(
                                     href=""
                                     ng-click="ctrl.startEstimatedHoursEdit(row, $event)"
@@ -238,8 +238,8 @@ div.wrapper.issues.schedule(
                                     ng-model="row.estimatedHoursInput"
                                     ng-focus="$event.target.select()"
                                     ng-keydown="ctrl.onEstimatedHoursKeydown($event, row)"
-                                    ng-disabled="ctrl.isSaving(row, 'estimated_hours') || !ctrl.canEditDate(row)"
-                                    ng-class="{'is-saving': ctrl.isSaving(row, 'estimated_hours'), 'is-readonly': !ctrl.canEditDate(row)}"
+                                    ng-disabled="ctrl.isSaving(row, 'estimated_hours') || !ctrl.canEditEstimatedHours(row)"
+                                    ng-class="{'is-saving': ctrl.isSaving(row, 'estimated_hours'), 'is-readonly': !ctrl.canEditEstimatedHours(row)}"
                                 )
 
                         div.issue-field.schedule-date-cell

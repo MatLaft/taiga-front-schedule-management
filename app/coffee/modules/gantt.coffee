@@ -93,6 +93,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     loadProject: ->
         project = @projectService.project.toJS()
 
+        if (project?.my_permissions or []).indexOf("view_gantt") == -1
+            @errorHandlingService.permissionDenied()
+
         @scope.projectId = project.id
         @scope.project = project
         @scope.$emit("project:loaded", project)
@@ -761,6 +764,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         notify = options.notify != false
         skipHistory = !!options.skipHistory
         return @q.when(false) if @treeRowReorderBusy
+        return @q.when(false) if !@canReorderGanttRows()
 
         context = @getGanttRowReorderContext(rowId)
         return @q.when(false) if !context? or !_.isArray(context.siblingRowIds)
@@ -777,6 +781,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         row = @rowNodesById[rowId]
         return @q.when(false) if !row?.item?
+        return @q.when(false) if !row.canReorder
         historyEntry = @_buildRowReorderHistoryEntry(
             rowId
             currentIndex
@@ -956,14 +961,49 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return "modify_task" if type == "task"
         return null
 
+    _hasProjectPermission: (permission) ->
+        return false if !permission?
+        permissions = @scope.project?.my_permissions or []
+        return permissions.indexOf(permission) != -1
+
     _canModifyType: (type) ->
         return false if @scope.project?.archived_code
 
         permission = @_permissionForType(type)
         return false if !permission?
 
-        permissions = @scope.project?.my_permissions or []
-        return permissions.indexOf(permission) != -1
+        return @_hasProjectPermission(permission)
+
+    _canModifyAnyType: ->
+        return true if @_canModifyType("epic")
+        return true if @_canModifyType("story")
+        return true if @_canModifyType("task")
+        return false
+
+    canModifyScheduleLinks: ->
+        return false if @scope.project?.archived_code
+        return @_hasProjectPermission("modify_schedule_links")
+
+    canModifyScheduleDates: ->
+        return false if @scope.project?.archived_code
+        return @_hasProjectPermission("modify_schedule_dates")
+
+    canModifyScheduleColor: ->
+        return false if @scope.project?.archived_code
+        return @_hasProjectPermission("modify_schedule_color")
+
+    canModifyGanttListOrder: ->
+        return false if @scope.project?.archived_code
+        return @_hasProjectPermission("modify_gantt_list_order")
+
+    canEditBarDates: ->
+        return @canModifyScheduleDates() and @_canModifyAnyType()
+
+    canEditBarColors: ->
+        return @canModifyScheduleColor() and @_canModifyAnyType()
+
+    canReorderGanttRows: ->
+        return @canModifyGanttListOrder() and @_canModifyAnyType()
 
     _getNodeOwnColor: (row) ->
         return null if !row?
@@ -1019,6 +1059,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return null
 
     canEditNodeColor: (row) ->
+        return false if !@canEditBarColors()
         target = @_getTargetNodeForColorChange(row)
         return false if !target?
         return @_canModifyType(target.type)
@@ -1095,17 +1136,18 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return !!@barsLocked
 
     canToggleBarsLock: ->
-        return true if @_canModifyType("epic")
-        return true if @_canModifyType("story")
-        return true if @_canModifyType("task")
+        return true if @canEditBarDates()
+        return true if @canEditBarColors()
+        return true if @canReorderGanttRows()
+        return true if @canModifyScheduleLinks()
         return false
 
     canUseColorPickerMode: ->
-        return @canToggleBarsLock()
+        return @canEditBarColors()
 
     canUseBarLinkMode: ->
         return false if @savingBarLinks
-        return false if !@canToggleBarsLock()
+        return false if !@canModifyScheduleLinks()
         return (@ganttBars or []).length > 1
 
     _deactivateColorPickerMode: ->
@@ -1181,6 +1223,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     _createBarLinkDependency: (sourceRowId, targetRowId, options = {}) ->
         notify = options.notify != false
+        return @q.reject() if !@canModifyScheduleLinks()
         sourceScheduleId = @_normalizeId(@scheduleIdByRowId[sourceRowId])
         targetScheduleId = @_normalizeId(@scheduleIdByRowId[targetRowId])
 
@@ -1211,6 +1254,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     _removeBarLinkDependency: (sourceRowId, targetRowId, options = {}) ->
         notify = options.notify != false
+        return @q.reject() if !@canModifyScheduleLinks()
         dependency = @_findScheduleDependencyForBarLink(sourceRowId, targetRowId)
 
         if !dependency?
@@ -1262,6 +1306,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     toggleGanttBarLink: (sourceRowId, targetRowId) ->
         return false if !@barLinkModeActive
+        return false if !@canModifyScheduleLinks()
         return false if !sourceRowId? or !targetRowId?
         return false if sourceRowId == targetRowId
         return false if !@rowNodesById[sourceRowId]? or !@rowNodesById[targetRowId]?
@@ -1273,6 +1318,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     registerGanttBarLinkClick: (rowId) ->
         return false if !@barLinkModeActive
+        return false if !@canModifyScheduleLinks()
         return false if !rowId?
         return false if !@rowNodesById[rowId]?
         return false if @savingBarLinks
@@ -1624,7 +1670,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             continue if !targetState?
 
             row = @rowNodesById[stateChange.rowId]
-            if !row?.item? or !row.canEdit
+            if !row?.item? or !row.canEditDates
                 return null if stateChange.rowId == entry?.rowId
                 continue
 
@@ -1644,6 +1690,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return payload
 
     _applyDateStateHistoryEntry: (entry, direction) ->
+        return @q.reject() if !@canModifyScheduleDates()
         stateChanges = @_getDateHistoryStateChanges(entry)
         return @q.reject() if !stateChanges.length
 
@@ -1683,6 +1730,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     _applyColorChangeHistoryEntry: (entry, direction) ->
         return @q.reject() if !entry?
+        return @q.reject() if !@canModifyScheduleColor()
 
         targetRow = @rowNodesById[entry.targetRowId]
         return @q.reject() if !targetRow?
@@ -1697,6 +1745,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     _applyRowReorderHistoryEntry: (entry, direction) ->
         return @q.reject() if !entry?
         return @q.reject() if !entry.rowId?
+        return @q.reject() if !@canReorderGanttRows()
 
         context = @getGanttRowReorderContext(entry.rowId)
         return @q.reject() if !context?
@@ -1725,6 +1774,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     _applyBarLinkHistoryEntry: (entry, direction) ->
         return @q.reject() if !entry?
         return @q.reject() if !entry.sourceRowId? or !entry.targetRowId?
+        return @q.reject() if !@canModifyScheduleLinks()
 
         shouldBeLinked = if direction == "undo" then !!entry.previousLinked else !!entry.nextLinked
         return @_setBarLinkDependencyState(entry.sourceRowId, entry.targetRowId, shouldBeLinked, {
@@ -2078,6 +2128,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @q.when() if hasColorValue and !normalizedColor?
         return @q.when() if !normalizedColor? and !options.allowNull
 
+        return @q.reject() if !@canModifyScheduleColor()
         target = @_getTargetNodeForColorChange(row)
         return @q.reject() if !target?
         return @q.reject() if !@_canModifyType(target.type)
@@ -2124,7 +2175,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     saveBarDateRange: (rowId, startDay, endDay, options = {}) ->
         row = @rowNodesById[rowId]
-        return @q.reject() if !row?.item? or !row.canEdit
+        return @q.reject() if !row?.item? or !row.canEditDates
 
         normalizedStartDay = Math.max(1, parseInt(startDay, 10) or 1)
         normalizedEndDay = Math.max(normalizedStartDay, parseInt(endDay, 10) or normalizedStartDay)
@@ -2139,7 +2190,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     saveBarDateValues: (rowId, startValue, dueValue, options = {}) ->
         row = @rowNodesById[rowId]
-        return @q.reject() if !row?.item? or !row.canEdit
+        return @q.reject() if !row?.item? or !row.canEditDates
         return @q.reject() if @barHistoryBusy and !options.skipHistory
 
         startField = options.startField or @_getStartEditableField(row.item)
@@ -2216,7 +2267,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     canCreateBarDateRange: (rowId) ->
         row = @rowNodesById[rowId]
-        return false if !row?.item? or !row.canEdit
+        return false if !row?.item? or !row.canEditDates
         return false if @savingRows[rowId]
         return false if row.startMoment? or row.dueMoment?
         return true
@@ -2407,6 +2458,8 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             progressValue: progressValue
             progressLabel: "#{progressValue}%"
             canEdit: @_canModifyType(type)
+            canEditDates: @_canModifyType(type) and @canModifyScheduleDates()
+            canReorder: @_canModifyType(type) and @canModifyGanttListOrder()
             barColor: null
             epicId: null
             children: []
@@ -3216,7 +3269,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 startDay: startDay
                 endDay: endDay
                 label: row.label
-                canEdit: !!row.canEdit
+                canEdit: !!row.canEditDates
                 resizeLimits: @_buildResizeLimits(row, timeline)
                 style: if row.barColor? then {fill: row.barColor} else {}
             }
@@ -4219,6 +4272,8 @@ GanttTreeReorderDirective = ($document) ->
         isTreeReorderEnabled = ->
             ctrl = $scope.ctrl
             return false if !ctrl?
+            if _.isFunction(ctrl.canReorderGanttRows)
+                return false if !ctrl.canReorderGanttRows()
             return false if ctrl.barsLocked
             return false if ctrl.barHistoryBusy
             return false if ctrl.treeRowReorderBusy
@@ -4383,6 +4438,7 @@ GanttTreeReorderDirective = ($document) ->
         startTreeRowDrag = (event, row) ->
             rowId = row.getAttribute("data-gantt-row-id")
             return false if !rowId?
+            return false if $scope.ctrl?.rowNodesById?[rowId]? and !$scope.ctrl.rowNodesById[rowId].canReorder
 
             context = $scope.ctrl?.getGanttRowReorderContext?(rowId)
             return false if !context? or !_.isArray(context.siblingRowIds)
@@ -4799,7 +4855,10 @@ GanttBarResizeDirective = ($document) ->
             return !!ctrl.barsLocked
 
         isBarLinkModeActive = ->
-            return !!$scope.ctrl?.barLinkModeActive
+            return false if !$scope.ctrl?.barLinkModeActive
+            if _.isFunction($scope.ctrl?.canModifyScheduleLinks)
+                return !!$scope.ctrl.canModifyScheduleLinks()
+            return true
 
         getBarModel = (rowId) ->
             return null if !rowId?
