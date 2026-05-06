@@ -1136,11 +1136,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return !!@barsLocked
 
     canToggleBarsLock: ->
-        return true if @canEditBarDates()
-        return true if @canEditBarColors()
-        return true if @canReorderGanttRows()
-        return true if @canModifyScheduleLinks()
-        return false
+        # The lock/unlock control gates interactions that require explicit
+        # unlock state (date editing and gantt list reordering).
+        return @canEditBarDates() or @canReorderGanttRows()
 
     canUseColorPickerMode: ->
         return @canEditBarColors()
@@ -1348,13 +1346,34 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return false if @barHistoryBusy
         return false if @treeRowReorderBusy
         return false if @savingBarLinks
-        return @barChangeUndoStack.length > 0
+        return false if @barChangeUndoStack.length <= 0
+
+        entry = @barChangeUndoStack[@barChangeUndoStack.length - 1]
+        return @_canApplyBarHistoryEntry(entry)
 
     canRedoBarChange: ->
         return false if @barHistoryBusy
         return false if @treeRowReorderBusy
         return false if @savingBarLinks
-        return @barChangeRedoStack.length > 0
+        return false if @barChangeRedoStack.length <= 0
+
+        entry = @barChangeRedoStack[@barChangeRedoStack.length - 1]
+        return @_canApplyBarHistoryEntry(entry)
+
+    _canApplyBarHistoryEntry: (entry) ->
+        return false if !entry?
+
+        if entry.type == "color"
+            return @canModifyScheduleColor()
+
+        if entry.type == "row-reorder"
+            return @canModifyGanttListOrder()
+
+        if entry.type == "link"
+            return @canModifyScheduleLinks()
+
+        # Date history entries are the default type.
+        return @canModifyScheduleDates()
 
     _pushBarChangeHistoryEntry: (stack, entry) ->
         return if !stack? or !entry?
@@ -1792,6 +1811,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         @stopToolbarMenuEvent(event)
         return @q.when() if @barHistoryBusy
 
+        entry = @barChangeUndoStack[@barChangeUndoStack.length - 1]
+        return @q.when() if !@_canApplyBarHistoryEntry(entry)
+
         entry = @barChangeUndoStack.pop()
         return @q.when() if !entry?
 
@@ -1812,6 +1834,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     redoBarChange: (event) ->
         @stopToolbarMenuEvent(event)
         return @q.when() if @barHistoryBusy
+
+        entry = @barChangeRedoStack[@barChangeRedoStack.length - 1]
+        return @q.when() if !@_canApplyBarHistoryEntry(entry)
 
         entry = @barChangeRedoStack.pop()
         return @q.when() if !entry?
