@@ -89,11 +89,6 @@ class RolesController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fil
             @scope.roles = roles
             @scope.role = @scope.roles[0]
 
-            if !@scope.project.is_private
-                publicPermissions.forEach (permission) =>
-                    if !@scope.role.permissions.includes(permission)
-                        @scope.role.permissions.push(permission)
-
             return roles
 
     loadInitialData: ->
@@ -324,8 +319,18 @@ RolePermissionsDirective = ($rootscope, $repo, $confirm, $compile) ->
         $ctrl = $el.controller()
 
         generateCategoriesFromRole = (role) ->
+            getPermissionsForDisplay = () ->
+                permissions = role.permissions or []
+
+                if !$scope.project.is_private
+                    permissions = _.uniq(permissions.concat($scope.project.public_permissions or []))
+
+                return permissions
+
             setActivePermissions = (permissions) ->
-                return _.map(permissions, (x) -> _.extend({}, x, {active: x["key"] in role.permissions}))
+                activePermissions = getPermissionsForDisplay()
+
+                return _.map(permissions, (x) -> _.extend({}, x, {active: x["key"] in activePermissions}))
 
             isPermissionEditable = (permission, role, project) ->
                 if role.external_user &&
