@@ -542,6 +542,8 @@
             "NUMBER_US_POINTS_HELP": "0 for an undetermined number",
             "KANBAN": "Kanban",
             "KANBAN_DESCRIPTION": "Organize your project in a lean way with this board.",
+            "SCHEDULE_GANTT": "Schedule / Gantt",
+            "SCHEDULE_GANTT_DESCRIPTION": "Plan and visualize activities, dates and dependencies in Schedule and Gantt views.",
             "ISSUES": "Issues",
             "ISSUES_DESCRIPTION": "Track the bugs, questions and enhancements related to your project. Don't miss anything!",
             "WIKI": "Wiki",

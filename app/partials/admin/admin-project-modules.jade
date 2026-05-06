@@ -106,6 +106,24 @@ div.wrapper(
                         span.check-text.check-yes(translate="COMMON.YES")
                         span.check-text.check-no(translate="COMMON.NO")
 
+            .module.module-schedule-gantt(ng-class="{true:'active', false:''}[project.is_schedule_activated]")
+                .module-icon
+                    tg-svg(svg-icon="icon-module-kanban")
+                .module-name(translate="ADMIN.MODULES.SCHEDULE_GANTT")
+                .module-desc(translate="ADMIN.MODULES.SCHEDULE_GANTT_DESCRIPTION")
+                .module-activation.module-direct-active
+                    div.check
+                        input.activate-input(
+                            id="functionality-schedule-gantt"
+                            name="functionality-schedule-gantt"
+                            type="checkbox"
+                            ng-checked="project.is_schedule_activated"
+                            ng-model="project.is_schedule_activated"
+                        )
+                        div
+                        span.check-text.check-yes(translate="COMMON.YES")
+                        span.check-text.check-no(translate="COMMON.NO")
+
             .module.module-issues(ng-class="{true:'active', false:''}[project.is_issues_activated]")
                 .module-icon
                     tg-svg(svg-icon="icon-module-issues")

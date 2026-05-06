@@ -537,6 +537,8 @@
             "NUMBER_US_POINTS_HELP": "0 para um número indeterminado",
             "KANBAN": "Kanban",
             "KANBAN_DESCRIPTION": "Organize seu projeto de um jeito simples com esse mural.",
+            "SCHEDULE_GANTT": "Schedule / Gantt",
+            "SCHEDULE_GANTT_DESCRIPTION": "Planeje e visualize atividades, datas e dependências nas visões de Schedule e Gantt.",
             "ISSUES": "Problemas",
             "ISSUES_DESCRIPTION": "Acompanhe os bugs, problemas e melhorias relacionados ao seu projeto. Não perca nada!",
             "WIKI": "Wiki",

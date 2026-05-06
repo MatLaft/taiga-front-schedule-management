@@ -93,7 +93,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
     loadProject: ->
         project = @projectService.project.toJS()
 
-        if (project?.my_permissions or []).indexOf("view_gantt") == -1
+        if (project?.my_permissions or []).indexOf("view_gantt") == -1 or project?.is_schedule_activated == false
             @errorHandlingService.permissionDenied()
 
         @scope.projectId = project.id

@@ -72,7 +72,8 @@ class ProjectMenuController
         if @.project.get("is_issues_activated") && @.project.get("my_permissions").indexOf("view_issues") != -1
             @.menu = @.menu.set("issues", true)
 
-        if @.project.get("my_permissions").indexOf("view_schedule") != -1 || @.project.get("my_permissions").indexOf("view_gantt") != -1
+        if @.project.get("is_schedule_activated") != false &&
+           (@.project.get("my_permissions").indexOf("view_schedule") != -1 || @.project.get("my_permissions").indexOf("view_gantt") != -1)
             @.menu = @.menu.set("schedule", true)
 
         if @.project.get("is_wiki_activated") && @.project.get("my_permissions").indexOf("view_wiki_pages") != -1
