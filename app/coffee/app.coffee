@@ -312,12 +312,19 @@ configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEven
         }
     )
 
-    # Schedule
-    $routeProvider.when("/project/:pslug/schedule",
+    # Schedule list
+    $routeProvider.when("/project/:pslug/schedulelist",
         {
             templateUrl: "schedule/schedule.html",
             loader: true,
             section: "schedule"
+        }
+    )
+
+    # Backwards compatibility for old schedule URL
+    $routeProvider.when("/project/:pslug/schedule",
+        {
+            redirectTo: "/project/:pslug/schedulelist"
         }
     )
 

@@ -28,7 +28,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
     constructor: (@scope, @q, @repo, @confirm, @lightboxFactory, @translate, @projectService, @errorHandlingService, @filterRemoteStorageService) ->
         bindMethods(@)
 
-        @scope.sectionName = "PROJECT.SECTION.SCHEDULE"
+        @scope.sectionName = "PROJECT.SECTION.ACTIVITIES_LIST"
         @.rows = []
         @.displayRows = []
         @.loading = false

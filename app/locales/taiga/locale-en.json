@@ -312,8 +312,8 @@
                 "DELETE_ISSUES": "Delete issues"
             },
             "SCHEDULE_GANTT": {
-                "NAME": "Schedule / Gantt",
-                "VIEW_SCHEDULE": "View schedule",
+                "NAME": "Schedule",
+                "VIEW_SCHEDULE": "View activities list",
                 "VIEW_GANTT": "View gantt",
                 "MODIFY_LINKS": "Modify links",
                 "MODIFY_EXPECTED_START_DATES": "Modify expected start dates",
@@ -542,7 +542,7 @@
             "NUMBER_US_POINTS_HELP": "0 for an undetermined number",
             "KANBAN": "Kanban",
             "KANBAN_DESCRIPTION": "Organize your project in a lean way with this board.",
-            "SCHEDULE_GANTT": "Schedule / Gantt",
+            "SCHEDULE_GANTT": "Schedule",
             "SCHEDULE_GANTT_DESCRIPTION": "Plan and visualize activities, dates and dependencies in Schedule and Gantt views.",
             "ISSUES": "Issues",
             "ISSUES_DESCRIPTION": "Track the bugs, questions and enhancements related to your project. Don't miss anything!",
@@ -933,6 +933,7 @@
             "KANBAN": "Kanban",
             "ISSUES": "Issues",
             "SCHEDULE": "Schedule",
+            "ACTIVITIES_LIST": "Activities list",
             "GANTT": "Gantt",
             "WIKI": "Wiki",
             "TEAM": "Team",

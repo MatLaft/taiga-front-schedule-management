@@ -66,7 +66,7 @@ urls = {
     "project-gantt": "/project/:project/gantt"
     "project-issues": "/project/:project/issues"
     "project-epics": "/project/:project/epics"
-    "project-schedule": "/project/:project/schedule"
+    "project-schedule": "/project/:project/schedulelist"
     "project-search": "/project/:project/search"
     "project-timeline": "/project/:project/timeline"
 

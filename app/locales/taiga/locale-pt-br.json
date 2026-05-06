@@ -311,8 +311,8 @@
                 "DELETE_ISSUES": "Excluir problemas"
             },
             "SCHEDULE_GANTT": {
-                "NAME": "Schedule / Gantt",
-                "VIEW_SCHEDULE": "Ver schedule",
+                "NAME": "Schedule",
+                "VIEW_SCHEDULE": "Ver lista de atividades",
                 "VIEW_GANTT": "Ver gantt",
                 "MODIFY_LINKS": "Modificar links",
                 "MODIFY_EXPECTED_START_DATES": "Modificar datas esperadas de início",
@@ -537,7 +537,7 @@
             "NUMBER_US_POINTS_HELP": "0 para um número indeterminado",
             "KANBAN": "Kanban",
             "KANBAN_DESCRIPTION": "Organize seu projeto de um jeito simples com esse mural.",
-            "SCHEDULE_GANTT": "Schedule / Gantt",
+            "SCHEDULE_GANTT": "Schedule",
             "SCHEDULE_GANTT_DESCRIPTION": "Planeje e visualize atividades, datas e dependências nas visões de Schedule e Gantt.",
             "ISSUES": "Problemas",
             "ISSUES_DESCRIPTION": "Acompanhe os bugs, problemas e melhorias relacionados ao seu projeto. Não perca nada!",
@@ -933,6 +933,7 @@
             "KANBAN": "Kanban",
             "ISSUES": "Problemas",
             "SCHEDULE": "Agenda",
+            "ACTIVITIES_LIST": "Lista de atividades",
             "GANTT": "Gantt",
             "WIKI": "Wiki",
             "TEAM": "Time",
