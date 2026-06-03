@@ -1132,7 +1132,12 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         row.item.setAttr(field, normalizedNew)
         @savingKey = "#{@rowKey(row)}-#{field}"
 
-        return @repo.save(row.item, true, {include_schedule: true}).then =>
+        savePromise = if field == "due_date"
+            @repo.save(row.item, true, {include_schedule: true})
+        else
+            @_saveScheduleStartDate(row, field, normalizedNew)
+
+        return savePromise.then =>
             @savingKey = null
             return
         , (errorData) =>
@@ -1141,6 +1146,14 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             message = @_extractApiErrorMessage(errorData)
             @confirm.notify("error", message)
             return @q.reject()
+
+    _saveScheduleStartDate: (row, field, dateValue) ->
+        payload =
+            project: @scope.projectId
+            entity_type: row.type
+            entity_id: row.item.id
+        payload[field] = dateValue
+        return @repo.create("schedule-items-update-dates", payload)
 
     _extractApiErrorMessage: (errorData) ->
         payload = errorData?.data or errorData

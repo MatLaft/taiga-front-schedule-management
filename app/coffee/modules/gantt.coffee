@@ -2243,11 +2243,27 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         affectedEntities = @_collectAffectedEntitiesForDateSave(row)
 
+        startChanged = currentStartValue != nextStartValue
+        dueChanged = currentDueValue != nextDueValue
+
         row.item.setAttr(startField, nextStartValue)
         row.item.setAttr("due_date", nextDueValue)
         @savingRows[rowId] = true
 
-        return @repo.save(row.item, true, {include_schedule: true}).then =>
+        savePromises = []
+        if dueChanged
+            savePromises.push(@repo.save(row.item, true, {include_schedule: true}))
+        if startChanged
+            startPayload =
+                project: row.item.project
+                entity_type: row.type
+                entity_id: row.item.id
+            startPayload[startField] = nextStartValue
+            savePromises.push(@repo.create("schedule-items-update-dates", startPayload))
+
+        savePromises.push(@q.when()) if !savePromises.length
+
+        return @q.all(savePromises).then =>
             delete @savingRows[rowId]
             return @_reloadGanttDataSilently().then =>
                 if historyEntry?
