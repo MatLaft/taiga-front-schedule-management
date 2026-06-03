@@ -4,7 +4,6 @@
     --gantt-col-gap: .5rem;
     --gantt-col-item: 22rem;
     --gantt-col-assignee: 10rem;
-    --gantt-col-eh: 4.5rem;
     --gantt-col-start: 5.5rem;
     --gantt-col-due: 5.5rem;
     --gantt-col-progress: 6rem;
@@ -15,11 +14,10 @@
         calc(
             var(--gantt-col-item) +
             var(--gantt-col-assignee) +
-            var(--gantt-col-eh) +
             var(--gantt-col-start) +
             var(--gantt-col-due) +
             var(--gantt-col-progress) +
-            (5 * var(--gantt-col-gap)) +
+            (4 * var(--gantt-col-gap)) +
             1.5rem
         );
 
@@ -417,7 +415,6 @@
         grid-template-columns:
             var(--gantt-col-item)
             var(--gantt-col-assignee)
-            var(--gantt-col-eh)
             var(--gantt-col-start)
             var(--gantt-col-due)
             var(--gantt-col-progress);
@@ -785,7 +782,6 @@
     }
 
     .gantt-tree-row .gantt-col-assignee,
-    .gantt-tree-row .gantt-col-eh,
     .gantt-tree-row .gantt-col-start,
     .gantt-tree-row .gantt-col-due,
     .gantt-tree-row .gantt-col-progress {
@@ -796,7 +792,6 @@
         width: 100%;
     }
 
-    .gantt-col-eh,
     .gantt-col-start,
     .gantt-col-due,
     .gantt-col-progress,

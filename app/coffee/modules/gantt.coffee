@@ -2475,7 +2475,6 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             inputId: inputId
             label: label
             assigneeLabel: @_getAssignedToName(item)
-            ehLabel: @_formatHoursLabel(item)
             startMoment: startMoment
             dueMoment: dueMoment
             startLabel: @_formatDateShort(startMoment)
@@ -2683,35 +2682,6 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         return "-" if !member?
         return member.full_name_display or member.full_name or member.username or "-"
-
-    _extractHoursValue: (item) ->
-        return null if !item?
-
-        candidates = [
-            item.estimated_hours
-            item.total_hours
-            item.total_estimated_hours
-            item.hours
-        ]
-
-        for value in candidates
-            continue if !value?
-
-            if _.isNumber(value)
-                return value
-
-            raw = "#{value}".replace(",", ".").replace(/[^0-9.-]/g, "")
-            parsed = parseFloat(raw)
-            return parsed if !isNaN(parsed)
-
-        return null
-
-    _formatHoursLabel: (item) ->
-        hours = @_extractHoursValue(item)
-        return "-" if !hours?
-
-        normalizedHours = if Math.round(hours) == hours then Math.round(hours) else Math.round(hours * 10) / 10
-        return "#{normalizedHours}h"
 
     _isClosed: (item) ->
         return false if !item?

@@ -1700,7 +1700,6 @@
                 "TYPE": "Type",
                 "SUBJECT": "Subject",
                 "STATUS": "Status",
-                "ESTIMATED_HOURS": "Horas estimadas",
                 "ASSIGNED_TO": "Atribuído a",
                 "ESTIMATED_START": "Estimated Start",
                 "ACTUAL_START": "Actual Start",

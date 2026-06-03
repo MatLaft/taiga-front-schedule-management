@@ -229,13 +229,6 @@ div.wrapper.gantt(
                                 data-gantt-resize="assignee"
                                 aria-label="Resize assignee column"
                             )
-                        span.gantt-col-eh.gantt-col-header
-                            span.gantt-col-header-text EH
-                            button.gantt-col-resizer(
-                                type="button"
-                                data-gantt-resize="eh"
-                                aria-label="Resize EH column"
-                            )
                         span.gantt-col-start.gantt-col-header
                             span.gantt-col-header-text Start
                             button.gantt-col-resizer(
@@ -323,7 +316,6 @@ div.wrapper.gantt(
                                                         )
                                             span.gantt-row-label {{ node.item.subject || node.item.name || "-" }}
                                     span.gantt-col-assignee {{ node.assigneeLabel }}
-                                    span.gantt-col-eh {{ node.ehLabel }}
                                     span.gantt-col-start {{ node.startLabel }}
                                     span.gantt-col-due {{ node.dueLabel }}
                                     span.gantt-col-progress
@@ -396,7 +388,6 @@ div.wrapper.gantt(
                                                                 )
                                                     span.gantt-row-label {{ story.item.subject || story.item.name || "-" }}
                                             span.gantt-col-assignee {{ story.assigneeLabel }}
-                                            span.gantt-col-eh {{ story.ehLabel }}
                                             span.gantt-col-start {{ story.startLabel }}
                                             span.gantt-col-due {{ story.dueLabel }}
                                             span.gantt-col-progress
@@ -459,7 +450,6 @@ div.wrapper.gantt(
                                                                     )
                                                         span.gantt-row-label {{ task.item.subject || task.item.name || "-" }}
                                                 span.gantt-col-assignee {{ task.assigneeLabel }}
-                                                span.gantt-col-eh {{ task.ehLabel }}
                                                 span.gantt-col-start {{ task.startLabel }}
                                                 span.gantt-col-due {{ task.dueLabel }}
                                                 span.gantt-col-progress
@@ -531,7 +521,6 @@ div.wrapper.gantt(
                                                         )
                                             span.gantt-row-label {{ node.item.subject || node.item.name || "-" }}
                                     span.gantt-col-assignee {{ node.assigneeLabel }}
-                                    span.gantt-col-eh {{ node.ehLabel }}
                                     span.gantt-col-start {{ node.startLabel }}
                                     span.gantt-col-due {{ node.dueLabel }}
                                     span.gantt-col-progress
@@ -594,7 +583,6 @@ div.wrapper.gantt(
                                                             )
                                                 span.gantt-row-label {{ task.item.subject || task.item.name || "-" }}
                                         span.gantt-col-assignee {{ task.assigneeLabel }}
-                                        span.gantt-col-eh {{ task.ehLabel }}
                                         span.gantt-col-start {{ task.startLabel }}
                                         span.gantt-col-due {{ task.dueLabel }}
                                         span.gantt-col-progress
@@ -656,7 +644,6 @@ div.wrapper.gantt(
                                                     )
                                         span.gantt-row-label {{ node.item.subject || node.item.name || "-" }}
                                 span.gantt-col-assignee {{ node.assigneeLabel }}
-                                span.gantt-col-eh {{ node.ehLabel }}
                                 span.gantt-col-start {{ node.startLabel }}
                                 span.gantt-col-due {{ node.dueLabel }}
                                 span.gantt-col-progress

@@ -34,7 +34,6 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.loading = false
         @.loadingError = false
         @.savingKey = null
-        @.editingEstimatedHoursKey = null
         @.openFilter = false
         @.filterQ = ""
         @.showTags = true
@@ -74,7 +73,6 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.typeOrderMode = null
         @.subjectSortDirection = null
         @.statusSortDirection = null
-        @.estimatedHoursSortDirection = null
         @.dateSortDirections = {}
         @.projectMembersById = {}
         @._typeOrderCycles = [
@@ -149,7 +147,6 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
                 type: type
                 typeLabel: typeLabel
                 tags: @._normalizeTags(item.tags)
-                estimatedHoursInput: @_estimatedHoursInputFromItem(item)
             }
         )
 
@@ -297,16 +294,6 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         @.updateDisplayRows()
 
-    toggleEstimatedHoursOrder: ->
-        @sortField = "estimated_hours"
-
-        if @estimatedHoursSortDirection == null or @estimatedHoursSortDirection == "desc"
-            @estimatedHoursSortDirection = "asc"
-        else
-            @estimatedHoursSortDirection = "desc"
-
-        @.updateDisplayRows()
-
     toggleDateOrder: (field) ->
         return if @_dateSortFields.indexOf(field) == -1
 
@@ -328,9 +315,6 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
 
         if field == "status"
             return @_directionToIconClass(@statusSortDirection)
-
-        if field == "estimated_hours"
-            return @_directionToIconClass(@estimatedHoursSortDirection)
 
         if @_dateSortFields.indexOf(field) != -1
             return @_directionToIconClass(@dateSortDirections[field])
@@ -485,10 +469,6 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             @displayRows = @._orderRowsByStatus(@statusSortDirection, filteredRows)
             return
 
-        if @sortField == "estimated_hours" and @estimatedHoursSortDirection?
-            @displayRows = @._orderRowsByEstimatedHours(@estimatedHoursSortDirection, filteredRows)
-            return
-
         if @_dateSortFields.indexOf(@sortField) != -1 and @dateSortDirections[@sortField]?
             @displayRows = @._orderRowsByDate(@sortField, @dateSortDirections[@sortField], filteredRows)
             return
@@ -553,32 +533,6 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
             statusB = "#{@getStatusLabel(b)}"
 
             comparison = statusA.localeCompare(statusB, undefined, {sensitivity: "base"})
-
-            if comparison == 0
-                comparison = @rowKey(a).localeCompare(@rowKey(b))
-
-            if isDescending then -comparison else comparison
-
-        return orderedRows
-
-    _orderRowsByEstimatedHours: (direction, sourceRows = @rows) ->
-        isDescending = direction == "desc"
-        orderedRows = sourceRows.slice(0)
-
-        orderedRows.sort (a, b) =>
-            hoursA = @_extractEstimatedHoursValue(a.item)
-            hoursB = @_extractEstimatedHoursValue(b.item)
-
-            hasA = hoursA?
-            hasB = hoursB?
-
-            if !hasA and !hasB
-                return @rowKey(a).localeCompare(@rowKey(b))
-
-            return 1 if !hasA
-            return -1 if !hasB
-
-            comparison = hoursA - hoursB
 
             if comparison == 0
                 comparison = @rowKey(a).localeCompare(@rowKey(b))
@@ -1018,190 +972,16 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         return false if !project? or !permission?
         return (project.my_permissions or []).indexOf(permission) != -1
 
-    canEditEstimatedHours: (row) ->
+    canEditDate: (row) ->
         project = @scope.project
         return false if !row?.item? or !project?
         return false if project.archived_code
 
         permission = @_editPermissionByRowType(row.type)
         return false if !permission?
+        return false if !@_hasProjectPermission(permission)
 
-        return @_hasProjectPermission(permission)
-
-    canEditDate: (row) ->
-        return false if !@canEditEstimatedHours(row)
         return @_hasProjectPermission("modify_schedule_dates")
-
-    _hasItemField: (item, field) ->
-        return false if !item? or !field?
-        return true if _.has(item, field)
-        attrs = item.getAttrs?()
-        return _.has(attrs, field)
-
-    _getEstimatedHoursField: (item) ->
-        candidates = ["estimated_hours", "total_hours", "total_estimated_hours", "hours"]
-        for field in candidates
-            return field if @_hasItemField(item, field)
-
-        return "estimated_hours"
-
-    _normalizeEstimatedHours: (value) ->
-        return null if value == null or value == undefined
-
-        if _.isNumber(value)
-            return if isNaN(value) then null else Math.max(0, value)
-
-        normalized = "#{value}".trim()
-        return null if !normalized.length
-
-        normalized = normalized.replace(",", ".").replace(/[^0-9.-]/g, "")
-        return null if !normalized.length
-
-        parsed = parseFloat(normalized)
-        return null if isNaN(parsed)
-        return Math.max(0, parsed)
-
-    _extractEstimatedHoursValue: (item) ->
-        return null if !item?
-
-        candidates = [
-            item.estimated_hours
-            item.total_hours
-            item.total_estimated_hours
-            item.hours
-        ]
-
-        for candidate in candidates
-            normalized = @_normalizeEstimatedHours(candidate)
-            return normalized if normalized?
-
-        return null
-
-    _estimatedHoursInputFromValue: (value) ->
-        normalized = @_normalizeEstimatedHours(value)
-        return "" if !normalized?
-
-        if Math.round(normalized) == normalized
-            return "#{Math.round(normalized)}"
-
-        return "#{Math.round(normalized * 100) / 100}"
-
-    _estimatedHoursInputFromItem: (item) ->
-        return "" if !item?
-
-        field = @_getEstimatedHoursField(item)
-        value = @_normalizeEstimatedHours(item[field])
-        value = @_extractEstimatedHoursValue(item) if !value?
-        return @_estimatedHoursInputFromValue(value)
-
-    estimatedHoursLabel: (row) ->
-        hours = @_extractEstimatedHoursValue(row?.item)
-        return "?" if !hours?
-
-        normalized = if Math.round(hours) == hours then Math.round(hours) else Math.round(hours * 100) / 100
-        return "#{normalized}h"
-
-    isEditingEstimatedHours: (row) ->
-        return false if !row?
-        return @editingEstimatedHoursKey == @rowKey(row)
-
-    startEstimatedHoursEdit: (row, $event) ->
-        $event?.preventDefault()
-        $event?.stopPropagation()
-
-        return if !row? or !@canEditEstimatedHours(row)
-        return if @isSaving(row, "estimated_hours")
-
-        @editingEstimatedHoursKey = @rowKey(row)
-        row.estimatedHoursInput = @_estimatedHoursInputFromItem(row.item)
-        @_focusEstimatedHoursInput(row)
-        return
-
-    _focusEstimatedHoursInput: (row, attempts = 0) ->
-        return if typeof document == "undefined"
-        return if !row?
-
-        rowKey = @rowKey(row)
-        @scope.$evalAsync =>
-            input = document.querySelector(".schedule-hours-input[data-row-key=\"#{rowKey}\"]")
-            if !input?
-                if attempts < 5
-                    setTimeout((=> @_focusEstimatedHoursInput(row, attempts + 1)), 0)
-                return
-
-            input.focus()
-            valueLength = "#{input.value or ''}".length
-            if valueLength and input.setSelectionRange?
-                input.setSelectionRange(0, valueLength)
-            input.select?()
-            return
-
-        return
-
-    cancelEstimatedHoursEdit: (row, $event) ->
-        $event?.preventDefault()
-        $event?.stopPropagation()
-
-        return if !row?
-
-        row.estimatedHoursInput = @_estimatedHoursInputFromItem(row.item)
-
-        if @isEditingEstimatedHours(row)
-            @editingEstimatedHoursKey = null
-
-        return
-
-    confirmEstimatedHoursEdit: (row, $event) ->
-        $event?.preventDefault()
-        $event?.stopPropagation()
-
-        return @q.reject() if !row? or !@isEditingEstimatedHours(row)
-
-        return @saveEstimatedHours(row).then =>
-            @editingEstimatedHoursKey = null
-            return
-
-    onEstimatedHoursKeydown: ($event, row) ->
-        return if !$event?
-        isEnter = $event.key == "Enter" or $event.keyCode == 13
-        isEscape = $event.key == "Escape" or $event.keyCode == 27
-        return if !isEnter and !isEscape
-
-        $event.preventDefault()
-        if isEscape
-            @cancelEstimatedHoursEdit(row)
-            return
-
-        @confirmEstimatedHoursEdit(row)
-
-    saveEstimatedHours: (row) ->
-        return @q.reject() if !@canEditEstimatedHours(row)
-        return @q.when() if @isSaving(row, "estimated_hours")
-        return @q.reject() if !row?.item?
-
-        field = @_getEstimatedHoursField(row.item)
-        normalizedOriginal = @_normalizeEstimatedHours(row.item[field])
-        normalizedOriginal = @_extractEstimatedHoursValue(row.item) if !normalizedOriginal?
-        normalizedNew = @_normalizeEstimatedHours(row.estimatedHoursInput)
-
-        if normalizedOriginal == normalizedNew
-            row.estimatedHoursInput = @_estimatedHoursInputFromValue(normalizedOriginal)
-            return @q.when()
-
-        row.item.setAttr(field, normalizedNew)
-        @savingKey = "#{@rowKey(row)}-estimated_hours"
-
-        return @repo.save(row.item, true, {include_schedule: true}).then =>
-            @savingKey = null
-            row.estimatedHoursInput = @_estimatedHoursInputFromItem(row.item)
-            @confirm.notify("success")
-            return
-        , =>
-            row.item.revert()
-            @savingKey = null
-            row.estimatedHoursInput = @_estimatedHoursInputFromItem(row.item)
-            @confirm.notify("error")
-            return @q.reject()
 
     itemNavKey: (row) ->
         return "project-epics-detail" if row.type == "epic"
