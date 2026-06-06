@@ -111,14 +111,16 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         @.loadingError = false
 
         promises = [
-            @repo.queryMany("epics", {project: @scope.projectId, include_schedule: true})
-            @repo.queryMany("userstories", {project: @scope.projectId, include_schedule: true})
-            @repo.queryMany("tasks", {project: @scope.projectId, include_schedule: true})
+            @repo.queryMany("epics", {project: @scope.projectId})
+            @repo.queryMany("userstories", {project: @scope.projectId})
+            @repo.queryMany("tasks", {project: @scope.projectId})
+            @repo.queryMany("schedule-items", {project: @scope.projectId})
             @filterRemoteStorageService.getFilters(@scope.projectId, @customFiltersStoreName)
         ]
 
         @q.all(promises).then (result) =>
-            [epics, userstories, tasks, customFiltersRaw] = result
+            [epics, userstories, tasks, scheduleItems, customFiltersRaw] = result
+            @._mergeScheduleItems(epics, userstories, tasks, scheduleItems)
 
             rows = []
             rows = rows.concat(@._toRows(epics, "epic", "Epic"))
@@ -139,6 +141,52 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
                 @confirm.notify("error")
 
             return @q.reject(xhr)
+
+    _scheduleItemKey: (entityType, entityId) ->
+        return null if !entityType? or !entityId?
+        return "#{entityType}-#{entityId}"
+
+    _applyModelAttrs: (item, attrs) ->
+        return if !item? or !attrs?
+
+        item._attrs = item._attrs or {}
+        item._modifiedAttrs = item._modifiedAttrs or {}
+        for own field, value of attrs
+            item._attrs[field] = value
+            delete item._modifiedAttrs[field]
+
+        item.initialize?()
+        item._isModified = false
+
+    _applyScheduleItemOverlay: (item, scheduleItem) ->
+        return if !item? or !scheduleItem?
+
+        @._applyModelAttrs(item, {
+            schedule_id: scheduleItem.schedule_id or scheduleItem.id
+            schedule_position: scheduleItem.position
+            estimated_start: scheduleItem.estimated_start
+            actual_start: scheduleItem.actual_start
+            due_date: scheduleItem.due_date
+            color: scheduleItem.color
+        })
+
+    _mergeScheduleItems: (epics, userstories, tasks, scheduleItems) ->
+        scheduleItemsByKey = {}
+        _.each(scheduleItems or [], (scheduleItem) =>
+            key = @._scheduleItemKey(scheduleItem.entity_type, scheduleItem.entity_id)
+            scheduleItemsByKey[key] = scheduleItem if key?
+        )
+
+        applyCollection = (items, entityType) =>
+            _.each(items or [], (item) =>
+                key = @._scheduleItemKey(entityType, item?.id)
+                @._applyScheduleItemOverlay(item, scheduleItemsByKey[key]) if key?
+            )
+
+        applyCollection(epics, "epic")
+        applyCollection(userstories, "userstory")
+        applyCollection(tasks, "task")
+        return
 
     _toRows: (items, type, typeLabel) ->
         return _.map(items, (item) =>
@@ -1129,31 +1177,35 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         if normalizedOriginal == normalizedNew
             return @q.when()
 
-        row.item.setAttr(field, normalizedNew)
+        pendingAttrs = {}
+        pendingAttrs[field] = normalizedNew
+        @._applyModelAttrs(row.item, pendingAttrs)
         @savingKey = "#{@rowKey(row)}-#{field}"
 
-        savePromise = if field == "due_date"
-            @repo.save(row.item, true, {include_schedule: true})
-        else
-            @_saveScheduleStartDate(row, field, normalizedNew)
+        savePromise = @_saveScheduleDate(row, field, normalizedNew)
 
         return savePromise.then =>
             @savingKey = null
             return
         , (errorData) =>
-            row.item.revert()
+            revertedAttrs = {}
+            revertedAttrs[field] = normalizedOriginal
+            @._applyModelAttrs(row.item, revertedAttrs)
             @savingKey = null
             message = @_extractApiErrorMessage(errorData)
             @confirm.notify("error", message)
             return @q.reject()
 
-    _saveScheduleStartDate: (row, field, dateValue) ->
+    _saveScheduleDate: (row, field, dateValue) ->
         payload =
             project: @scope.projectId
             entity_type: row.type
             entity_id: row.item.id
-        payload[field] = dateValue
-        return @repo.create("schedule-items-update-dates", payload)
+        if field == "due_date"
+            payload.due_date = dateValue
+        else
+            payload[field] = dateValue
+        return @repo.create("schedule-items-update", payload)
 
     _extractApiErrorMessage: (errorData) ->
         payload = errorData?.data or errorData

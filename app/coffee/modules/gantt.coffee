@@ -178,14 +178,16 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return @q.when() if !@scope.projectId
 
         promises = [
-            @repo.queryMany("epics", {project: @scope.projectId, include_schedule: true})
-            @repo.queryMany("userstories", {project: @scope.projectId, include_schedule: true})
-            @repo.queryMany("tasks", {project: @scope.projectId, include_schedule: true})
+            @repo.queryMany("epics", {project: @scope.projectId})
+            @repo.queryMany("userstories", {project: @scope.projectId})
+            @repo.queryMany("tasks", {project: @scope.projectId})
+            @repo.queryMany("schedule-items", {project: @scope.projectId})
             @repo.queryMany("schedule-dependencies", {project: @scope.projectId})
         ]
 
         return @q.all(promises).then (result) =>
-            [epics, userstories, tasks, scheduleDependencies] = result
+            [epics, userstories, tasks, scheduleItems, scheduleDependencies] = result
+            @_mergeScheduleItems(epics, userstories, tasks, scheduleItems)
             @buildGanttData(
                 epics or [],
                 userstories or [],
@@ -194,6 +196,52 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             )
             @scope.$evalAsync()
             return
+
+    _scheduleItemKey: (entityType, entityId) ->
+        return null if !entityType? or !entityId?
+        return "#{entityType}-#{entityId}"
+
+    _applyModelAttrs: (item, attrs) ->
+        return if !item? or !attrs?
+
+        item._attrs = item._attrs or {}
+        item._modifiedAttrs = item._modifiedAttrs or {}
+        for own field, value of attrs
+            item._attrs[field] = value
+            delete item._modifiedAttrs[field]
+
+        item.initialize?()
+        item._isModified = false
+
+    _applyScheduleItemOverlay: (item, scheduleItem) ->
+        return if !item? or !scheduleItem?
+
+        @_applyModelAttrs(item, {
+            schedule_id: scheduleItem.schedule_id or scheduleItem.id
+            schedule_position: scheduleItem.position
+            estimated_start: scheduleItem.estimated_start
+            actual_start: scheduleItem.actual_start
+            due_date: scheduleItem.due_date
+            color: scheduleItem.color
+        })
+
+    _mergeScheduleItems: (epics, userstories, tasks, scheduleItems) ->
+        scheduleItemsByKey = {}
+        _.each(scheduleItems or [], (scheduleItem) =>
+            key = @_scheduleItemKey(scheduleItem.entity_type, scheduleItem.entity_id)
+            scheduleItemsByKey[key] = scheduleItem if key?
+        )
+
+        applyCollection = (items, entityType) =>
+            _.each(items or [], (item) =>
+                key = @_scheduleItemKey(entityType, item?.id)
+                @_applyScheduleItemOverlay(item, scheduleItemsByKey[key]) if key?
+            )
+
+        applyCollection(epics, "epic")
+        applyCollection(userstories, "userstory")
+        applyCollection(tasks, "task")
+        return
 
     buildGanttData: (epics, userstories, tasks, scheduleDependencies = @sourceScheduleDependencies) ->
         @sourceEpics = epics or []
@@ -790,15 +838,14 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             context.rowType
         )
 
-        itemToSave = row.item
-        if _.isFunction(row.item.realClone)
-            itemToSave = row.item.realClone()
-            itemToSave.revert?()
-
-        itemToSave.setAttr("position", numericTargetIndex + 1)
+        payload =
+            project: @scope.projectId
+            entity_type: @_scheduleEntityTypeForRow(row)
+            entity_id: row.item.id
+            position: numericTargetIndex + 1
         @treeRowReorderBusy = true
 
-        return @repo.save(itemToSave, true, {include_schedule: true}).then =>
+        return @repo.create("schedule-items-update", payload).then =>
             return @_reloadGanttDataSilently().then =>
                 @_registerBarChangeHistoryEntry(historyEntry) if !skipHistory
                 @confirm.notify("success") if notify
@@ -1017,7 +1064,6 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 row: row
                 type: "epic"
                 item: row.item
-                saveOptions: {include_schedule: true}
             }
 
         if row.epicId?
@@ -1027,7 +1073,6 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                     row: epicRow
                     type: "epic"
                     item: epicRow.item
-                    saveOptions: {include_schedule: true}
                 }
 
         if row.type == "story"
@@ -1035,7 +1080,6 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 row: row
                 type: "story"
                 item: row.item
-                saveOptions: {include_schedule: true}
             }
 
         if row.type == "task"
@@ -1046,14 +1090,12 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                     row: storyRow
                     type: "story"
                     item: storyRow.item
-                    saveOptions: {include_schedule: true}
                 }
 
             return {
                 row: row
                 type: "task"
                 item: row.item
-                saveOptions: {include_schedule: true}
             }
 
         return null
@@ -1676,6 +1718,9 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         return "task" if rowType == "task"
         return null
 
+    _scheduleEntityTypeForRow: (row) ->
+        return @_rowTypeToScheduleEntityType(row?.type)
+
     _buildDateBulkApplyPayload: (entry, orderedStateChanges, direction) ->
         payload = {
             project_id: @_normalizeId(@scope.projectId)
@@ -2169,29 +2214,39 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                 normalizedColor
             )
 
-        target.item.setAttr("color", normalizedColor)
+        @_applyModelAttrs(target.item, {color: normalizedColor})
 
         affectedRows = _.uniq([row.rowId, target.row.rowId])
         _.each(affectedRows, (affectedRowId) =>
             @savingRows[affectedRowId] = true
         )
 
-        saveOptions = target.saveOptions or {}
-        return @repo.save(target.item, true, saveOptions).then =>
+        payload =
+            project: @scope.projectId
+            entity_type: @_scheduleEntityTypeForRow(target.row)
+            entity_id: target.item.id
+            color: normalizedColor
+
+        finalizeSuccess = =>
+            @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
+            @activeColorMenuRowId = null
+            delete @colorMenuOpenUpwardByRowId[row?.rowId] if row?.rowId?
+            @scope.$evalAsync()
+            @confirm.notify("success") if options.notify != false
+            return
+
+        return @repo.create("schedule-items-update", payload).then =>
             _.each(affectedRows, (affectedRowId) =>
                 delete @savingRows[affectedRowId]
             )
 
-            @_registerBarChangeHistoryEntry(historyEntry) if historyEntry?
-            @activeColorMenuRowId = null
-            delete @colorMenuOpenUpwardByRowId[row?.rowId] if row?.rowId?
-            @timelineStartAnchor = null
-            @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
-            @scope.$evalAsync()
-            @confirm.notify("success") if options.notify != false
-            return
+            return @_reloadGanttDataSilently().then(finalizeSuccess, =>
+                @timelineStartAnchor = null
+                @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
+                return finalizeSuccess()
+            )
         , (errorData) =>
-            target.item.revert()
+            @_applyModelAttrs(target.item, {color: currentColor})
             _.each(affectedRows, (affectedRowId) =>
                 delete @savingRows[affectedRowId]
             )
@@ -2246,20 +2301,21 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         startChanged = currentStartValue != nextStartValue
         dueChanged = currentDueValue != nextDueValue
 
-        row.item.setAttr(startField, nextStartValue)
-        row.item.setAttr("due_date", nextDueValue)
+        pendingAttrs = {}
+        pendingAttrs[startField] = nextStartValue
+        pendingAttrs.due_date = nextDueValue
+        @_applyModelAttrs(row.item, pendingAttrs)
         @savingRows[rowId] = true
 
         savePromises = []
-        if dueChanged
-            savePromises.push(@repo.save(row.item, true, {include_schedule: true}))
-        if startChanged
-            startPayload =
-                project: row.item.project
-                entity_type: row.type
+        if dueChanged or startChanged
+            schedulePayload =
+                project: @scope.projectId
+                entity_type: @_scheduleEntityTypeForRow(row)
                 entity_id: row.item.id
-            startPayload[startField] = nextStartValue
-            savePromises.push(@repo.create("schedule-items-update-dates", startPayload))
+            schedulePayload.due_date = nextDueValue if dueChanged
+            schedulePayload[startField] = nextStartValue if startChanged
+            savePromises.push(@repo.create("schedule-items-update", schedulePayload))
 
         savePromises.push(@q.when()) if !savePromises.length
 
@@ -2300,7 +2356,10 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
                     @confirm.notify("success") if options.notify != false
                     return
         , (errorData) =>
-            row.item.revert()
+            revertAttrs = {}
+            revertAttrs[startField] = currentStartValue
+            revertAttrs.due_date = currentDueValue
+            @_applyModelAttrs(row.item, revertAttrs)
             delete @savingRows[rowId]
             message = @_extractApiErrorMessage(errorData)
             @confirm.notify("error", message) if options.notify != false
@@ -2382,7 +2441,7 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             normalizedId = @_normalizeId(entityId)
             return if !normalizedId?
 
-            request = @repo.queryOne(entityName, normalizedId, {include_schedule: true}).then (entityModel) =>
+            request = @repo.queryOne(entityName, normalizedId).then (entityModel) =>
                 @_upsertSourceEntity(entityName, entityModel)
                 return entityModel
             , =>
@@ -2397,10 +2456,17 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
         reloadPromise = if requests.length then @q.all(requests) else @q.when([])
 
         return reloadPromise.then =>
-            @timelineStartAnchor = null
-            @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
-            @scope.$evalAsync()
-            return
+            return @repo.queryMany("schedule-items", {project: @scope.projectId}).then (scheduleItems) =>
+                @_mergeScheduleItems(@sourceEpics, @sourceUserstories, @sourceTasks, scheduleItems)
+                @timelineStartAnchor = null
+                @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
+                @scope.$evalAsync()
+                return
+            , =>
+                @timelineStartAnchor = null
+                @buildGanttData(@sourceEpics, @sourceUserstories, @sourceTasks)
+                @scope.$evalAsync()
+                return
 
     _extractApiErrorMessage: (errorData) ->
         payload = errorData?.data or errorData
