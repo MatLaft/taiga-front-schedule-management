@@ -236,6 +236,10 @@ class GanttController extends mixOf(taiga.Controller, taiga.PageMixin)
             _.each(items or [], (item) =>
                 key = @_scheduleItemKey(entityType, item?.id)
                 @_applyScheduleItemOverlay(item, scheduleItemsByKey[key]) if key?
+                # `_applyModelAttrs` returns `false` (from `_isModified = false`); without an
+                # explicit `return`, lodash `_.each` treats that as an early-exit signal and
+                # stops after the first item, so only the first row would get schedule data.
+                return
             )
 
         applyCollection(epics, "epic")
