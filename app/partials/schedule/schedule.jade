@@ -63,12 +63,11 @@ div.wrapper.issues.schedule(
             sidebar.filters-bar(
                 ng-if="ctrl.openFilter"
             )
-                tg-filter(
+                tg-schedule-filter(
                     q="ctrl.filterQ"
                     filters="ctrl.filters"
                     custom-filters="ctrl.customFilters"
                     selected-filters="ctrl.selectedFilters"
-                    customFilters="ctl.customFilters"
                     on-save-custom-filter="ctrl.saveCustomFilter(name)"
                     on-add-filter="ctrl.addFilter(filter)"
                     on-select-custom-filter="ctrl.selectCustomFilter(filter)"

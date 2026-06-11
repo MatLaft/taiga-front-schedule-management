@@ -440,55 +440,10 @@ module.directive("tgLightboxLeaveProjectWarning", ["lightboxService", LightboxLe
 SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confirm, $modelTransform) ->
     link = ($scope, $el, attrs) ->
         prettyDate = $translate.instant("COMMON.PICKERDATE.FORMAT")
-        fieldName = $scope.fieldName or "due_date"
-        fieldLabel = ($scope.fieldLabel or fieldName).replace(/_/g, " ")
-        isDueDateField = fieldName == "due_date"
-
-        $scope.lightboxTitle = if $scope.lightboxTitle? then $scope.lightboxTitle else if isDueDateField then $translate.instant("LIGHTBOX.SET_DUE_DATE.TITLE") else "Set #{fieldLabel}"
-        $scope.datePlaceholder = if $scope.datePlaceholder? then $scope.datePlaceholder else $translate.instant("LIGHTBOX.SET_DUE_DATE.PLACEHOLDER_DUE_DATE")
-        $scope.showSuggestions = if angular.isDefined($scope.showSuggestions) then $scope.showSuggestions else isDueDateField
-        $scope.showDueDateReason = if angular.isDefined($scope.showDueDateReason) then $scope.showDueDateReason else isDueDateField
-        $scope.deleteDateTitle = if isDueDateField then $translate.instant("LIGHTBOX.SET_DUE_DATE.TITLE_ACTION_DELETE_DUE_DATE") else $translate.instant("COMMON.DELETE")
-
         lightboxService.open($el)
 
         if ($scope.object.due_date)
             $scope.new_due_date = moment($scope.object.due_date).format(prettyDate)
-
-        parsePickerDate = (rawDate) ->
-            return null if !rawDate
-
-            parsed = moment(rawDate, prettyDate, true)
-            return null if !parsed.isValid()
-
-            return parsed.format("YYYY-MM-DD")
-
-        persistWithoutAutoSave = (newDueDate, currentLoading = null) ->
-            previousDueDate = $scope.object.due_date
-            $scope.object.due_date = newDueDate
-
-            closeLightbox = ->
-                currentLoading?.finish()
-                lightboxService.close($el)
-
-            if !_.isFunction($scope.onSave)
-                $scope.$apply()
-                closeLightbox()
-                return
-
-            savePromise = $scope.onSave(newDueDate, previousDueDate)
-
-            if savePromise?.then
-                savePromise.then ->
-                    $confirm.notify("success")
-                , ->
-                    $scope.object.due_date = previousDueDate
-                    $confirm.notify("error")
-
-                savePromise.finally ->
-                    closeLightbox()
-            else
-                closeLightbox()
 
         $el.on "click", ".suggestion", (event) ->
             target = angular.element(event.currentTarget)
@@ -503,13 +458,21 @@ SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confi
                 .start()
 
             if $scope.notAutoSave
-                new_due_date = parsePickerDate($el.find(".due-date").val())
+                new_due_date = $('.due-date').val()
+                $scope.object.due_date = if (new_due_date) \
+                    then moment(new_due_date, prettyDate).format("YYYY-MM-DD") \
+                    else null
 
-                persistWithoutAutoSave(new_due_date, currentLoading)
+                $scope.$apply()
+                currentLoading.finish()
+                lightboxService.close($el)
                 return
 
             transform = $modelTransform.save (object) ->
-                object.due_date = parsePickerDate($el.find(".due-date").val())
+                new_due_date = $('.due-date').val()
+                object.due_date = if (new_due_date) \
+                    then moment(new_due_date, prettyDate).format("YYYY-MM-DD") \
+                    else null
                 return object
 
             transform.then ->
@@ -528,26 +491,17 @@ SetDueDateDirective = ($rootscope, lightboxService, $loading, $translate, $confi
             save()
 
         remove = ->
-            if !isDueDateField
-                $el.find(".due-date").val(null)
-                $scope.object.due_date_reason = null
-
-                if $scope.notAutoSave
-                    persistWithoutAutoSave(null)
-                else
-                    save()
-                return
-
             title = $translate.instant("LIGHTBOX.DELETE_DUE_DATE.TITLE")
             subtitle = $translate.instant("LIGHTBOX.DELETE_DUE_DATE.SUBTITLE")
             message = moment($scope.object.due_date).format(prettyDate)
 
             $confirm.askOnDelete(title, message, subtitle).then (askResponse) ->
                 askResponse.finish()
-                $el.find(".due-date").val(null)
+                $('.due-date').val(null)
                 $scope.object.due_date_reason = null
                 if $scope.notAutoSave
-                    persistWithoutAutoSave(null)
+                    $scope.object.due_date = null
+                    lightboxService.close($el)
                 else
                     save()
 
@@ -1080,3 +1034,5 @@ tgResources, $tgResources, $epicsService, tgAnalytics) ->
 module.directive("tgLbRelatetoepic", [
     "$rootScope", "$tgConfirm", "lightboxService", "tgCurrentUserService", "tgResources",
     "$tgResources", "tgEpicsService", "$tgAnalytics", RelateToEpicLightboxDirective])
+
+

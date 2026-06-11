@@ -1155,7 +1155,7 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
         title = if isDueDateField then @translate.instant("LIGHTBOX.SET_DUE_DATE.TITLE") else "Set #{fieldLabel}"
 
         @lightboxFactory.create(
-            "tg-lb-set-due-date",
+            "tg-schedule-lb-set-date",
             {"class": "lightbox lightbox-set-due-date"},
             {
                 object: {
@@ -1165,9 +1165,6 @@ class ScheduleController extends mixOf(taiga.Controller, taiga.PageMixin)
                 fieldName: field
                 fieldLabel: fieldLabel
                 lightboxTitle: title
-                showSuggestions: true
-                showDueDateReason: isDueDateField
-                notAutoSave: true
                 onSave: (newDueDate) => @saveFieldDate(row, field, newDueDate)
             }
         )

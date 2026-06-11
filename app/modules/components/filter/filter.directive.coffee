@@ -43,17 +43,15 @@ FilterDirective = () ->
 
     return {
         scope: {
-            q: "<",
             onChangeQ: "&",
             onAddFilter: "&",
             onSelectCustomFilter: "&",
             onRemoveFilter: "&",
             onRemoveCustomFilter: "&",
             onSaveCustomFilter: "&",
-            onSetDateRange: "&?",
-            onClearDateRange: "&?",
             customFilters: "<",
-            filters: "<",
+            filters: "<"
+            customFilters: "<"
             selectedFilters: "<"
         },
         bindToController: true,
