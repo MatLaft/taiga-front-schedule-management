@@ -104,7 +104,6 @@ describe "ProjectMenu", ->
                     backlog: false,
                     kanban: false,
                     issues: false,
-                    schedule: false,
                     wiki: false
                 })
 
@@ -113,10 +112,9 @@ describe "ProjectMenu", ->
                     is_epics_activated: true,
                     is_backlog_activated: true,
                     is_kanban_activated: true,
-                    is_schedule_activated: true,
                     is_issues_activated: true,
                     is_wiki_activated: true,
-                    my_permissions: ["view_epics", "view_us", "view_issues", "view_wiki_pages", "view_schedule", "view_gantt"]
+                    my_permissions: ["view_epics", "view_us", "view_issues", "view_wiki_pages"]
                 })
 
                 mocks.projectService.project = project
@@ -133,26 +131,8 @@ describe "ProjectMenu", ->
                     backlog: true,
                     kanban: true,
                     issues: true,
-                    schedule: true,
                     wiki: true
                 })
-
-            it "schedule hidden when schedule module is disabled", () ->
-                project = Immutable.fromJS({
-                    is_schedule_activated: false,
-                    my_permissions: ["view_schedule", "view_gantt"]
-                })
-
-                mocks.projectService.project = project
-                mocks.projectService.sectionsBreadcrumb = Immutable.List()
-
-                ctrl = $controller("ProjectMenu")
-
-                ctrl.show()
-
-                menu = ctrl.menu.toJS()
-
-                expect(menu.schedule).to.be.false
 
             it "all options disabled because the user doesn't have permissions", () ->
                 project = Immutable.fromJS({
@@ -178,7 +158,6 @@ describe "ProjectMenu", ->
                     backlog: false,
                     kanban: false,
                     issues: false,
-                    schedule: false,
                     wiki: false
                 })
 
